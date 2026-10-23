@@ -114,6 +114,107 @@ function Symbol({ name, filled = false }: { name: string; filled?: boolean }) {
   return <span className="material-symbols-rounded symbol" data-filled={filled}>{name}</span>;
 }
 
+// Billboard Sprite Generator for Floating Building Labels
+function createBuildingLabelSprite(
+  code: string,
+  name: string,
+  isNight: boolean,
+  isSelected: boolean
+): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 130;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return new THREE.Sprite();
+
+  const displayNames: Record<string, string> = {
+    'GH-B': 'Gargi Hostel (Block B)',
+    'TH-C': 'Tagore Hostel (Block C)',
+    'RH-A': 'Raman Hostel (Block A)',
+    'CK-LIB': 'Central Library',
+    'SI-LAB': 'Science & Labs (Lab 1)',
+    'AK-EQ': 'Engineering Quad',
+    'SD-CH': 'Dining & Cafeteria',
+    'FM-HUB': 'Facilities Dispatch Hub',
+  };
+  const displayName = displayNames[code] ?? name;
+
+  // Background Rounded Rect Pill
+  const bx = 12;
+  const by = 12;
+  const bw = 488;
+  const bh = 106;
+  const radius = 22;
+
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(bx, by, bw, bh, radius);
+  } else {
+    ctx.rect(bx, by, bw, bh);
+  }
+
+  if (isSelected) {
+    ctx.fillStyle = isNight ? 'rgba(12, 38, 72, 0.95)' : 'rgba(0, 103, 102, 0.95)';
+    ctx.strokeStyle = isNight ? '#38bdf8' : '#00ffff';
+    ctx.lineWidth = 5;
+  } else {
+    ctx.fillStyle = isNight ? 'rgba(10, 20, 38, 0.90)' : 'rgba(15, 45, 38, 0.90)';
+    ctx.strokeStyle = isNight ? 'rgba(56, 189, 248, 0.5)' : 'rgba(110, 231, 183, 0.5)';
+    ctx.lineWidth = 3;
+  }
+  ctx.fill();
+  ctx.stroke();
+
+  // Code Badge Chip (Left)
+  const chipX = bx + 14;
+  const chipY = by + 16;
+  const chipW = 125;
+  const chipH = 74;
+  const chipRadius = 14;
+
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(chipX, chipY, chipW, chipH, chipRadius);
+  } else {
+    ctx.rect(chipX, chipY, chipW, chipH);
+  }
+
+  ctx.fillStyle = isSelected
+    ? (isNight ? '#38bdf8' : '#e0f2fe')
+    : (isNight ? '#1e293b' : '#143c33');
+  ctx.fill();
+
+  // Code Text
+  ctx.font = 'bold 30px system-ui, -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = isSelected
+    ? (isNight ? '#0b1120' : '#0369a1')
+    : (isNight ? '#38bdf8' : '#6ee7b7');
+  ctx.fillText(code, chipX + chipW / 2, chipY + chipH / 2);
+
+  // Building Name Text (Right)
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 28px system-ui, -apple-system, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(displayName, chipX + chipW + 18, by + bh / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+
+  const spriteMat = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+  });
+
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.scale.set(4.6, 1.18, 1);
+  return sprite;
+}
+
 export default function Campus3D({
   tickets,
   onOpenTicket,
@@ -498,6 +599,25 @@ export default function Campus3D({
         win.position.set(b.coordinates.x, (bHeight / b.floors.length) * f, b.coordinates.z);
         buildingGroup.add(win);
       }
+
+      // Floating Architectural Billboard Label on Top
+      const isSelected = selectedBuilding?.id === b.id;
+      const labelSprite = createBuildingLabelSprite(b.code, b.name, isNight, isSelected);
+      const labelY = bHeight + 0.95;
+      labelSprite.position.set(b.coordinates.x, labelY, b.coordinates.z);
+      labelSprite.userData = { buildingId: b.id, buildingName: b.name };
+      buildingGroup.add(labelSprite);
+
+      // Subtle architectural mounting post
+      const postGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.65, 6);
+      const postMat = new THREE.MeshStandardMaterial({
+        color: isNight ? 0x38bdf8 : 0x718096,
+        metalness: 0.6,
+        roughness: 0.4,
+      });
+      const postMesh = new THREE.Mesh(postGeo, postMat);
+      postMesh.position.set(b.coordinates.x, bHeight + 0.32, b.coordinates.z);
+      buildingGroup.add(postMesh);
     });
 
     scene.add(buildingGroup);
@@ -518,7 +638,7 @@ export default function Campus3D({
       if (active) {
         const catColor = categoryColors[active.category]?.hex ?? 0x0284c7;
         const bHeight = b.type === 'hostel' ? 3.8 : b.type === 'academic' ? 4.4 : 3.2;
-        const beaconY = bHeight + 1.4;
+        const beaconY = bHeight + 2.15;
 
         const bObj = new THREE.Group();
         bObj.position.set(b.coordinates.x, beaconY, b.coordinates.z);
