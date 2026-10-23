@@ -6,7 +6,12 @@ const PORT = env.PORT;
 const HOST = '0.0.0.0';
 
 const server = app.listen(PORT, HOST, () => {
-  console.log(`CampusConnect Backend listening on http://${HOST}:${PORT} [${env.NODE_ENV}]`);
+  console.log(`\n==================================================`);
+  console.log(`CampusConnect Backend is RUNNING!`);
+  console.log(`Access in browser: http://localhost:${PORT}`);
+  console.log(`Health check:      http://localhost:${PORT}/api/health`);
+  console.log(`Bound to interface: ${HOST}:${PORT} [${env.NODE_ENV}]`);
+  console.log(`==================================================\n`);
 });
 
 // Graceful shutdown handling for Cloud Run container lifecycle

@@ -19,6 +19,21 @@ export function createApp(customRepos?: IRepositoryRegistry): Express {
     res.status(200).json({ status: 'ok', service: 'campusconnect' });
   });
 
+  // Root landing endpoint for browsers & developer ease of use
+  app.get('/', (_req: Request, res: Response) => {
+    res.status(200).json({
+      name: 'CampusConnect Backend API',
+      version: '1.0.0',
+      status: 'operational',
+      endpoints: {
+        health: '/api/health',
+        intakes: '/api/intakes',
+        tickets: '/api/tickets',
+        staff: '/api/staff/tickets',
+      },
+    });
+  });
+
   // Mount API router at /api
   app.use('/api', createApiRouter(repositories));
 
