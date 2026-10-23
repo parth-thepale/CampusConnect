@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { isFirebaseConfigured } from '../repositories/firestore/client';
+import { env } from '../config/env';
 
 export function createHealthRoutes(): Router {
   const router = Router();
@@ -24,6 +26,16 @@ export function createHealthRoutes(): Router {
   });
 
   router.get('/readyz', (_req: Request, res: Response) => {
+    if (env.NODE_ENV === 'production' && !env.USE_IN_MEMORY_REPO) {
+      if (!isFirebaseConfigured()) {
+        res.status(503).json({
+          status: 'not_ready',
+          service: 'campusconnect-backend',
+          reason: 'Database connection not initialized',
+        });
+        return;
+      }
+    }
     res.status(200).json({ status: 'ready', service: 'campusconnect-backend' });
   });
 

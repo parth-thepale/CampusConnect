@@ -44,6 +44,10 @@ const envSchema = z.object({
   FIREBASE_CLIENT_STORAGE_BUCKET: z.string().optional(),
   FIREBASE_CLIENT_MESSAGING_SENDER_ID: z.string().optional(),
   FIREBASE_CLIENT_APP_ID: z.string().optional(),
+  // Render Secret File or explicit service account key path
+  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
+  // Allowed CORS origins for external frontend clients (comma-separated URLs)
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

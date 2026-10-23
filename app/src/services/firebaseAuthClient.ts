@@ -1,5 +1,5 @@
 import * as admin from 'firebase-admin';
-import { env } from '../config/env';
+import { ensureFirebaseAdmin } from '../config/firebaseAdmin';
 
 export interface IFirebaseAuthClient {
   getUserByEmail(email: string): Promise<{ uid: string; email?: string } | null>;
@@ -10,17 +10,7 @@ export interface IFirebaseAuthClient {
 
 export class DefaultFirebaseAuthClient implements IFirebaseAuthClient {
   constructor() {
-    this.ensureInitialized();
-  }
-
-  private ensureInitialized(): void {
-    if (admin.apps.length === 0) {
-      const options: admin.AppOptions = {};
-      if (env.FIREBASE_PROJECT_ID || env.GOOGLE_CLOUD_PROJECT) {
-        options.projectId = env.FIREBASE_PROJECT_ID || env.GOOGLE_CLOUD_PROJECT;
-      }
-      admin.initializeApp(options);
-    }
+    ensureFirebaseAdmin();
   }
 
   async getUserByEmail(email: string): Promise<{ uid: string; email?: string } | null> {

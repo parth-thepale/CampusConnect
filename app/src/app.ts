@@ -2,12 +2,14 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { IRepositoryRegistry } from './repositories/interfaces';
 import { getRepositories } from './repositories';
+import { isFirebaseConfigured } from './repositories/firestore/client';
 import { IAiService } from './types/ai';
 import { IEmailDeliveryService } from './services/emailService';
 import { IFirebaseAuthClient } from './services/firebaseAuthClient';
 import { createApiRouter } from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { renderAuthTestPage } from './views/authTestPage';
+import { ForbiddenError } from './errors/AppError';
 import { env } from './config/env';
 
 export function createApp(
@@ -19,12 +21,43 @@ export function createApp(
   const app = express();
   const repositories = customRepos || getRepositories();
 
-  // Basic security and parsing middleware
-  app.use(cors());
+  // Configurable CORS middleware supporting future separated frontend hosting
+  const allowedOrigins = env.CORS_ALLOWED_ORIGINS
+    ? env.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+    : [];
+
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+        if (!origin) {
+          return callback(null, true);
+        }
+
+        // In non-production (dev/test), allow all origins for developer convenience
+        if (env.NODE_ENV !== 'production') {
+          return callback(null, true);
+        }
+
+        // In production, enforce allowlist if defined
+        if (allowedOrigins.length > 0) {
+          if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+            return callback(null, true);
+          }
+          return callback(new ForbiddenError(`Origin '${origin}' not permitted by CORS policy`));
+        }
+
+        // If no explicit allowlist configured, permit request
+        return callback(null, true);
+      },
+      credentials: true,
+    })
+  );
+
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-  // Root health probes for Google Cloud Run / Kubernetes
+  // Root health probes for Render / Cloud Run / Kubernetes
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok', service: 'campusconnect-backend' });
   });
@@ -34,6 +67,17 @@ export function createApp(
   });
 
   app.get('/readyz', (_req: Request, res: Response) => {
+    // In production mode with Firestore, verify Firebase/Firestore initialization
+    if (env.NODE_ENV === 'production' && !env.USE_IN_MEMORY_REPO) {
+      if (!isFirebaseConfigured()) {
+        res.status(503).json({
+          status: 'not_ready',
+          service: 'campusconnect-backend',
+          reason: 'Database connection not initialized',
+        });
+        return;
+      }
+    }
     res.status(200).json({ status: 'ready', service: 'campusconnect-backend' });
   });
 

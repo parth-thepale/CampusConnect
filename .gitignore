@@ -9,6 +9,15 @@ build/
 .env.*.local
 *.env
 
+# Secrets & Credential files (STRICTLY FORBIDDEN IN GIT)
+*service-account*.json
+*service_account*.json
+*firebase-adminsdk*.json
+firebase-key*.json
+*.pem
+*.key
+secrets/
+
 # Logs
 logs/
 *.log

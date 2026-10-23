@@ -4,3 +4,10 @@ coverage/
 .env
 .env.*
 *.log
+*service-account*.json
+*service_account*.json
+*firebase-adminsdk*.json
+firebase-key*.json
+*.pem
+*.key
+secrets/
