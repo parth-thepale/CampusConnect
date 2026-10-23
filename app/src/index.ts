@@ -12,6 +12,12 @@ export const api = onRequest(
     region: 'us-central1',
     cors: true,
     maxInstances: 10,
+    secrets: [
+      'GEMINI_API_KEY',
+      'AUTH_EMAIL_OTP_SECRET',
+      'SMTP_USER',
+      'SMTP_PASS',
+    ],
   },
   app
 );

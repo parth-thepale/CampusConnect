@@ -4,7 +4,7 @@
   "description": "CampusConnect - Student campus-issue reporting and resolution platform backend",
   "main": "dist/index.js",
   "engines": {
-    "node": ">=20.0.0"
+    "node": "22"
   },
   "scripts": {
     "build": "tsc",

@@ -46,6 +46,14 @@ describe('Firebase Functions & Hosting Migration Tests', () => {
       const publicIndexPath = path.join(rootDir, 'public', 'index.html');
       expect(fs.existsSync(publicIndexPath)).toBe(true);
     });
+
+    it('app/package.json specifies exact Node.js 22 runtime engine and preserves Render start script', () => {
+      const pkgPath = path.join(rootDir, 'app', 'package.json');
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      expect(pkg.engines?.node).toBe('22');
+      expect(pkg.scripts?.start).toBe('node dist/server.js');
+      expect(pkg.main).toBe('dist/index.js');
+    });
   });
 
   describe('Cloud Functions HTTPS Entrypoint Adapter', () => {
