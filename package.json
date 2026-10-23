@@ -5,10 +5,17 @@
   "description": "CampusConnect - Student campus-issue reporting and resolution platform",
   "scripts": {
     "build": "npm --prefix app run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:all": "npm --prefix app run build && npm --prefix frontend run build",
     "start": "npm --prefix app start",
     "dev": "npm --prefix app run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
     "test": "npm --prefix app test",
+    "test:frontend": "npm --prefix frontend test",
+    "test:all": "npm --prefix app test && npm --prefix frontend test",
     "typecheck": "npm --prefix app run typecheck",
+    "typecheck:frontend": "npm --prefix frontend run typecheck",
+    "typecheck:all": "npm --prefix app run typecheck && npm --prefix frontend run typecheck",
     "smoke:ai": "npm --prefix app run smoke:ai"
   }
 }
