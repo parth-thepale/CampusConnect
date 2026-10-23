@@ -1,0 +1,30 @@
+import { createApp } from './app';
+import { env } from './config/env';
+
+const app = createApp();
+const PORT = env.PORT;
+const HOST = '0.0.0.0';
+
+const server = app.listen(PORT, HOST, () => {
+  console.log(`CampusConnect Backend listening on http://${HOST}:${PORT} [${env.NODE_ENV}]`);
+});
+
+// Graceful shutdown handling for Cloud Run container lifecycle
+function handleShutdown(signal: string) {
+  console.log(`Received ${signal}. Shutting down gracefully...`);
+  server.close(() => {
+    console.log('HTTP server closed. Exiting process.');
+    process.exit(0);
+  });
+
+  // Force shutdown after timeout if pending connections hang
+  setTimeout(() => {
+    console.error('Graceful shutdown timeout exceeded. Forcing exit.');
+    process.exit(1);
+  }, 10000).unref();
+}
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+
+export default server;

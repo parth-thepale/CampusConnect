@@ -1,0 +1,13 @@
+{
+  "name": "campusconnect",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CampusConnect - Student campus-issue reporting and resolution platform",
+  "scripts": {
+    "build": "npm --prefix app run build",
+    "start": "npm --prefix app start",
+    "dev": "npm --prefix app run dev",
+    "test": "npm --prefix app test",
+    "typecheck": "npm --prefix app run typecheck"
+  }
+}
