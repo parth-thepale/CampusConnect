@@ -21,6 +21,29 @@ const envSchema = z.object({
     .transform((val) => val === 'true'),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-3.5-flash-lite'),
+  AUTH_EMAIL_OTP_SECRET: z.string().default('campusconnect-dev-otp-secret-key-32b'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true')
+    .default('false'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  EMAIL_FROM: z.string().default('CampusConnect <noreply@campusconnect.edu>'),
+  AUTH_TEST_PAGE_ENABLED: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true')
+    .default('false'),
+  // Firebase client credentials for the temporary auth test harness
+  FIREBASE_CLIENT_API_KEY: z.string().optional(),
+  FIREBASE_CLIENT_AUTH_DOMAIN: z.string().optional(),
+  FIREBASE_CLIENT_PROJECT_ID: z.string().optional(),
+  FIREBASE_CLIENT_STORAGE_BUCKET: z.string().optional(),
+  FIREBASE_CLIENT_MESSAGING_SENDER_ID: z.string().optional(),
+  FIREBASE_CLIENT_APP_ID: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -11,8 +11,10 @@ import {
   IIntakeRepository,
   ITicketRepository,
   IEventRepository,
+  IOtpRepository,
   IRepositoryRegistry,
   TicketFilter,
+  OtpChallenge,
 } from '../interfaces';
 
 export class MemoryUserRepository implements IUserRepository {
@@ -203,6 +205,64 @@ export class MemoryEventRepository implements IEventRepository {
   }
 }
 
+export class MemoryOtpRepository implements IOtpRepository {
+  private challenges = new Map<string, OtpChallenge>();
+
+  async createChallenge(challenge: OtpChallenge): Promise<OtpChallenge> {
+    const copy = JSON.parse(JSON.stringify(challenge));
+    this.challenges.set(challenge.challengeId, copy);
+    return JSON.parse(JSON.stringify(copy));
+  }
+
+  async findLatestByEmail(email: string): Promise<OtpChallenge | null> {
+    const normalized = email.toLowerCase().trim();
+    let latest: OtpChallenge | null = null;
+    for (const c of this.challenges.values()) {
+      if (c.email === normalized) {
+        if (!latest || c.createdAt.localeCompare(latest.createdAt) > 0) {
+          latest = c;
+        }
+      }
+    }
+    return latest ? JSON.parse(JSON.stringify(latest)) : null;
+  }
+
+  async findById(challengeId: string): Promise<OtpChallenge | null> {
+    const c = this.challenges.get(challengeId);
+    return c ? JSON.parse(JSON.stringify(c)) : null;
+  }
+
+  async incrementAttempts(challengeId: string): Promise<number> {
+    const c = this.challenges.get(challengeId);
+    if (!c) return 0;
+    c.attempts += 1;
+    return c.attempts;
+  }
+
+  async markConsumed(challengeId: string): Promise<void> {
+    const c = this.challenges.get(challengeId);
+    if (c) {
+      c.consumed = true;
+      c.consumedAt = new Date().toISOString();
+    }
+  }
+
+  async countRecentRequests(email: string, sinceIsoString: string): Promise<number> {
+    const normalized = email.toLowerCase().trim();
+    let count = 0;
+    for (const c of this.challenges.values()) {
+      if (c.email === normalized && c.createdAt >= sinceIsoString) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  clear(): void {
+    this.challenges.clear();
+  }
+}
+
 export function createMemoryRepositories(): IRepositoryRegistry & {
   clearAll: () => void;
 } {
@@ -210,17 +270,20 @@ export function createMemoryRepositories(): IRepositoryRegistry & {
   const intakes = new MemoryIntakeRepository();
   const events = new MemoryEventRepository();
   const tickets = new MemoryTicketRepository(events);
+  const otps = new MemoryOtpRepository();
 
   return {
     users,
     intakes,
     tickets,
     events,
+    otps,
     clearAll: () => {
       users.clear();
       intakes.clear();
       tickets.clear();
       events.clear();
+      otps.clear();
     },
   };
 }

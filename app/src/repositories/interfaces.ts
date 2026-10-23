@@ -47,9 +47,32 @@ export interface IEventRepository {
   listByTicketId(ticketId: string): Promise<TicketEvent[]>;
 }
 
+export interface OtpChallenge {
+  challengeId: string;
+  email: string;
+  codeHash: string;
+  expiresAt: string;
+  attempts: number;
+  maxAttempts: number;
+  consumed: boolean;
+  consumedAt?: string;
+  createdAt: string;
+  lastResentAt: string;
+}
+
+export interface IOtpRepository {
+  createChallenge(challenge: OtpChallenge): Promise<OtpChallenge>;
+  findLatestByEmail(email: string): Promise<OtpChallenge | null>;
+  findById(challengeId: string): Promise<OtpChallenge | null>;
+  incrementAttempts(challengeId: string): Promise<number>;
+  markConsumed(challengeId: string): Promise<void>;
+  countRecentRequests(email: string, sinceIsoString: string): Promise<number>;
+}
+
 export interface IRepositoryRegistry {
   users: IUserRepository;
   intakes: IIntakeRepository;
   tickets: ITicketRepository;
   events: IEventRepository;
+  otps: IOtpRepository;
 }

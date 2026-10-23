@@ -19,5 +19,13 @@ export function createHealthRoutes(): Router {
     });
   });
 
+  router.get('/healthz', (_req: Request, res: Response) => {
+    res.status(200).json({ status: 'ok', service: 'campusconnect-backend' });
+  });
+
+  router.get('/readyz', (_req: Request, res: Response) => {
+    res.status(200).json({ status: 'ready', service: 'campusconnect-backend' });
+  });
+
   return router;
 }

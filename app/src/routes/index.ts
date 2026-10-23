@@ -1,24 +1,36 @@
 import { Router } from 'express';
 import { IRepositoryRegistry } from '../repositories/interfaces';
 import { AuthService } from '../services/authService';
+import { OtpAuthService } from '../services/otpAuthService';
+import { IEmailDeliveryService } from '../services/emailService';
+import { IFirebaseAuthClient } from '../services/firebaseAuthClient';
 import { IntakeService } from '../services/intakeService';
 import { TicketService } from '../services/ticketService';
 import { IAiService } from '../types/ai';
 import { GeminiService } from '../services/geminiService';
 import { createAuthMiddleware } from '../middleware/auth';
 import { createHealthRoutes } from './healthRoutes';
+import { createAuthRoutes } from './authRoutes';
 import { createIntakeRoutes } from './intakeRoutes';
 import { createTicketRoutes } from './ticketRoutes';
 import { createStaffRoutes } from './staffRoutes';
 
 export function createApiRouter(
   repositories: IRepositoryRegistry,
-  aiService?: IAiService
+  aiService?: IAiService,
+  customEmailService?: IEmailDeliveryService,
+  customFirebaseAuth?: IFirebaseAuthClient
 ): Router {
   const router = Router();
   const activeAiService = aiService || new GeminiService();
 
   const authService = new AuthService(repositories.users);
+  const otpAuthService = new OtpAuthService(
+    repositories.otps,
+    authService,
+    customEmailService,
+    customFirebaseAuth
+  );
   const ticketService = new TicketService(
     repositories.tickets,
     repositories.events,
@@ -30,10 +42,11 @@ export function createApiRouter(
     activeAiService
   );
 
-  const authMiddleware = createAuthMiddleware(authService);
+  const authMiddleware = createAuthMiddleware(authService, customFirebaseAuth);
 
   // Mount routes under /api
   router.use(createHealthRoutes());
+  router.use('/auth', createAuthRoutes(otpAuthService, authMiddleware));
   router.use('/intakes', createIntakeRoutes(intakeService, authMiddleware));
   router.use('/tickets', createTicketRoutes(ticketService, authMiddleware));
   router.use('/staff', createStaffRoutes(ticketService, authMiddleware));

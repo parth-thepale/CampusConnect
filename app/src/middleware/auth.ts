@@ -3,6 +3,7 @@ import * as admin from 'firebase-admin';
 import { env } from '../config/env';
 import { User, Role } from '../types/domain';
 import { AuthService } from '../services/authService';
+import { IFirebaseAuthClient, DefaultFirebaseAuthClient } from '../services/firebaseAuthClient';
 import { UnauthorizedError, ForbiddenError } from '../errors/AppError';
 
 declare global {
@@ -13,7 +14,12 @@ declare global {
   }
 }
 
-export function createAuthMiddleware(authService: AuthService) {
+export function createAuthMiddleware(
+  authService: AuthService,
+  customFirebaseAuth?: IFirebaseAuthClient
+) {
+  const firebaseAuth = customFirebaseAuth || new DefaultFirebaseAuthClient();
+
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const authHeader = req.headers.authorization;
@@ -53,7 +59,7 @@ export function createAuthMiddleware(authService: AuthService) {
 
       let decodedToken: admin.auth.DecodedIdToken;
       try {
-        decodedToken = await admin.auth().verifyIdToken(idToken);
+        decodedToken = await firebaseAuth.verifyIdToken(idToken);
       } catch (err: unknown) {
         // Safe logging without leaking tokens
         const errMessage = err instanceof Error ? err.message : 'Unknown auth verification error';

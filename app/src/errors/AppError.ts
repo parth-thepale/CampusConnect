@@ -60,3 +60,15 @@ export class AiServiceUnavailableError extends AppError {
     super(503, 'AI_SERVICE_UNAVAILABLE', message);
   }
 }
+
+export class RateLimitError extends AppError {
+  constructor(message = 'Too many requests. Please try again later.') {
+    super(429, 'RATE_LIMIT_EXCEEDED', message);
+  }
+}
+
+export class EmailServiceUnavailableError extends AppError {
+  constructor(message = 'Email delivery service is currently unavailable.') {
+    super(503, 'EMAIL_SERVICE_UNAVAILABLE', message);
+  }
+}

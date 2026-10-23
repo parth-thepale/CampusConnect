@@ -12,8 +12,10 @@ import {
   IIntakeRepository,
   ITicketRepository,
   IEventRepository,
+  IOtpRepository,
   IRepositoryRegistry,
   TicketFilter,
+  OtpChallenge,
 } from '../interfaces';
 
 export class FirestoreUserRepository implements IUserRepository {
@@ -216,11 +218,68 @@ export class FirestoreEventRepository implements IEventRepository {
   }
 }
 
+export class FirestoreOtpRepository implements IOtpRepository {
+  private get collection() {
+    return getFirestore().collection('otp_challenges');
+  }
+
+  async createChallenge(challenge: OtpChallenge): Promise<OtpChallenge> {
+    await this.collection.doc(challenge.challengeId).set(challenge);
+    return challenge;
+  }
+
+  async findLatestByEmail(email: string): Promise<OtpChallenge | null> {
+    const normalized = email.toLowerCase().trim();
+    const snap = await this.collection
+      .where('email', '==', normalized)
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .get();
+    if (snap.empty) return null;
+    return snap.docs[0].data() as OtpChallenge;
+  }
+
+  async findById(challengeId: string): Promise<OtpChallenge | null> {
+    const doc = await this.collection.doc(challengeId).get();
+    if (!doc.exists) return null;
+    return doc.data() as OtpChallenge;
+  }
+
+  async incrementAttempts(challengeId: string): Promise<number> {
+    const db = getFirestore();
+    const docRef = this.collection.doc(challengeId);
+    return await db.runTransaction(async (t) => {
+      const doc = await t.get(docRef);
+      if (!doc.exists) return 0;
+      const current = (doc.data()?.attempts || 0) + 1;
+      t.update(docRef, { attempts: current });
+      return current;
+    });
+  }
+
+  async markConsumed(challengeId: string): Promise<void> {
+    await this.collection.doc(challengeId).update({
+      consumed: true,
+      consumedAt: new Date().toISOString(),
+    });
+  }
+
+  async countRecentRequests(email: string, sinceIsoString: string): Promise<number> {
+    const normalized = email.toLowerCase().trim();
+    const snap = await this.collection
+      .where('email', '==', normalized)
+      .where('createdAt', '>=', sinceIsoString)
+      .get();
+    return snap.size;
+  }
+}
+
 export function createFirestoreRepositories(): IRepositoryRegistry {
   return {
     users: new FirestoreUserRepository(),
     intakes: new FirestoreIntakeRepository(),
     tickets: new FirestoreTicketRepository(),
     events: new FirestoreEventRepository(),
+    otps: new FirestoreOtpRepository(),
   };
 }
