@@ -1,0 +1,127 @@
+{
+  "name": "CampusConnect Facilities Agent",
+  "version": "1.0.0",
+  "model": "models/gemini-2.5-flash-lite",
+  "description": "High-throughput, minimal-token AI agent for university campus facilities operations, complaint intake, multimodal visual inspection, and technician dispatch.",
+  "systemInstruction": {
+    "role": "system",
+    "parts": [
+      {
+        "text": "You are CampusConnect Facilities Agent, an AI supervisor for campus facilities management.\n\nOBJECTIVE:\nDeliver concise, high-accuracy maintenance triage, image diagnostics, and work order intelligence with minimal token consumption.\n\nCORE RULES:\n1. SAFETY FIRST: Classify electrical hazards (arcing, exposed conductors), major water flooding, and structural defects as 'urgent'.\n2. TOKEN EFFICIENCY: Respond strictly in structured JSON or terse bulleted markdown. Avoid filler preamble, conversational apologies, or repetitive disclaimers.\n3. ZERO HALLUCINATION: Never invent campus policies, maintenance SLA commitments, or part warranties not in evidence.\n4. MULTIMODAL DIAGNOSTICS: On facility photos, identify physical components (valves, breakers, access points, traps) and failure modes factually.\n5. ROLE ENFORCEMENT: Staff access handles operational triage and updates; administrative access oversees routing rules and capacity metrics."
+      }
+    ]
+  },
+  "generationConfig": {
+    "temperature": 0.2,
+    "topP": 0.95,
+    "maxOutputTokens": 1024,
+    "responseMimeType": "application/json",
+    "thinkingConfig": {
+      "thinkingBudget": 0
+    }
+  },
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "name": "analyze_complaint",
+          "description": "Analyzes unstructured student issue text and optional photo into structured category, summary, clarity score, and review checks.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string",
+                "description": "Student complaint description text"
+              },
+              "locationId": {
+                "type": "string",
+                "description": "Campus location identifier if selected"
+              }
+            },
+            "required": ["description"]
+          }
+        },
+        {
+          "name": "detect_image_problem",
+          "description": "Performs multimodal visual diagnostics on uploaded maintenance photo to detect category, severity, visible objects, and repair steps.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "photo": {
+                "type": "object",
+                "properties": {
+                  "data": { "type": "string", "description": "Base64 encoded image data" },
+                  "mimeType": { "type": "string", "description": "MIME type (image/jpeg, image/png, image/webp)" },
+                  "name": { "type": "string", "description": "Original image filename" },
+                  "hint": { "type": "string", "description": "Student context hint" }
+                },
+                "required": ["data", "mimeType"]
+              }
+            },
+            "required": ["photo"]
+          }
+        },
+        {
+          "name": "triage_ticket",
+          "description": "Triages an open campus ticket into priority, staff briefing notes, suggested physical checks, and student updates.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "ticketId": {
+                "type": "string",
+                "description": "Public ticket ID (e.g. CC-2026-1040)"
+              }
+            },
+            "required": ["ticketId"]
+          }
+        },
+        {
+          "name": "auto_write",
+          "description": "Generates concise, professional sentences for maintenance records (issues, technician resolutions, staff notes, or student feedback).",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["issue", "resolution", "note", "general", "feedback"]
+              },
+              "text": { "type": "string", "description": "Raw dictation or keywords" },
+              "category": { "type": "string", "description": "Maintenance category" },
+              "location": { "type": "string", "description": "Location name" }
+            },
+            "required": ["type"]
+          }
+        },
+        {
+          "name": "operations_pulse",
+          "description": "Retrieves live campus operations headline, workload distribution, and recommended next actions.",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        {
+          "name": "list_tickets",
+          "description": "Lists current campus maintenance tickets filtered by category or status.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "category": {
+                "type": "string",
+                "enum": ["plumbing", "electricity", "cleanliness", "internet"]
+              },
+              "status": {
+                "type": "string",
+                "enum": ["submitted", "assigned", "in_progress", "resolved"]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "webhook": {
+    "url": "https://YOUR-APP-URL.a.run.app/api/ai/agent-tools",
+    "method": "POST"
+  }
+}

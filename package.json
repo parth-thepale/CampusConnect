@@ -16,6 +16,8 @@
     "dev:ui": "npm --prefix ui run dev",
     "build:ui": "npm --prefix ui run build",
     "start:ui": "npm --prefix ui start",
+    "serve:prod": "npm --prefix ui run build && npm --prefix ui start",
+    "deploy:cloudrun": "gcloud run deploy campusconnect --source . --region us-central1 --allow-unauthenticated",
     "test": "npm --prefix app test",
     "test:frontend": "npm --prefix frontend test",
     "test:all": "npm --prefix app test && npm --prefix frontend test",

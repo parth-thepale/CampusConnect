@@ -1,12 +1,13 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import { randomBytes } from 'node:crypto';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { analyzeComplaint, autoWriteText, chatWithAi, compareCandidates, detectProblemFromImage, operationsPulse, triageTicket } from './ai.js';
 import { authenticateFace, authenticateLocal, createTicket, decideDuplicate, detailedAnalytics, findCandidates, getAllTickets, getTicket, initStore, listTickets, metrics, routingRules, submitStudentFeedback, updateTicket } from './store.js';
-import { categories, statuses, type SessionUser } from '../src/types.js';
+import { categories, statuses, type Category, type SessionUser, type TicketStatus } from '../src/types.js';
 
 initStore();
 
@@ -161,14 +162,76 @@ app.get('/api/ai/operations-pulse', requireAuth, requireRole('staff', 'admin'), 
 });
 app.get('/api/routing-rules', requireAuth, requireRole('admin'), (_req, res) => res.json({ rules: routingRules() }));
 
+const agentToolSchema = z.object({
+  tool: z.enum(['analyze_complaint', 'detect_image_problem', 'triage_ticket', 'auto_write', 'operations_pulse', 'list_tickets']),
+  arguments: z.record(z.string(), z.unknown()).default({}),
+});
+
+// Dedicated Google AI Studio Agent tool execution webhook
+app.post('/api/ai/agent-tools', async (req, res, next) => {
+  const input = valid(agentToolSchema, req.body, res);
+  if (!input) return;
+  try {
+    const { tool, arguments: args } = input;
+    if (tool === 'analyze_complaint') {
+      const description = String(args.description ?? '');
+      const locationId = args.locationId ? String(args.locationId) : undefined;
+      const draft = await analyzeComplaint({ description, locationId });
+      return res.json({ tool, result: draft });
+    }
+    if (tool === 'detect_image_problem') {
+      const photo = args.photo as { data: string; mimeType: string; name?: string; hint?: string };
+      const detection = await detectProblemFromImage(photo);
+      return res.json({ tool, result: detection });
+    }
+    if (tool === 'triage_ticket') {
+      const ticketId = String(args.ticketId ?? '');
+      const adminUser: SessionUser = { uid: 'agent-bot', email: 'agent@campusconnect.internal', name: 'AI Studio Agent', role: 'admin' };
+      const ticket = getTicket(adminUser, ticketId);
+      if (!ticket) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ticket not found' } });
+      const triage = await triageTicket(ticket);
+      return res.json({ tool, result: triage });
+    }
+    if (tool === 'auto_write') {
+      const autoContext = args as Parameters<typeof autoWriteText>[0];
+      const result = await autoWriteText(autoContext);
+      return res.json({ tool, result });
+    }
+    if (tool === 'operations_pulse') {
+      const pulse = await operationsPulse(metrics());
+      return res.json({ tool, result: pulse });
+    }
+    if (tool === 'list_tickets') {
+      const category = args.category ? (String(args.category) as Category) : undefined;
+      const status = args.status ? (String(args.status) as TicketStatus) : undefined;
+      const all = getAllTickets().filter((t) => (!category || t.category === category) && (!status || t.status === status));
+      return res.json({
+        tool,
+        result: {
+          total: all.length,
+          tickets: all.slice(0, 15).map((t) => ({ publicId: t.publicId, category: t.category, location: t.location, status: t.status, summary: t.summary })),
+        },
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
   void next;
   const message = error instanceof Error ? error.message : 'Unexpected server error.';
   res.status(500).json({ error: { code: 'SERVER_ERROR', message } });
 });
 
-const dist = join(process.cwd(), 'dist');
-if (existsSync(dist)) {
+const serverDir = dirname(fileURLToPath(import.meta.url));
+const candidateDistPaths = [
+  join(process.cwd(), 'dist'),
+  join(process.cwd(), 'ui', 'dist'),
+  join(serverDir, '..', 'dist'),
+];
+const dist = candidateDistPaths.find(existsSync);
+if (dist) {
   app.use(express.static(dist));
   app.get('/{*path}', (_req, res) => res.sendFile(join(dist, 'index.html')));
 }
