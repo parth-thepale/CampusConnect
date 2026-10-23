@@ -170,15 +170,23 @@ const zodDuplicateSchema = z.object({
 export class GeminiService implements IAiService {
   private client: IGeminiClient | null = null;
   private modelName: string;
-  private readonly requestTimeoutMs = 15000;
+  private readonly requestTimeoutMs = 120000; // Bounded 120s timeout for network resilience
 
-  constructor(customClient?: IGeminiClient, model?: string) {
-    this.modelName = model || env.GEMINI_MODEL || 'gemini-2.5-flash';
+  constructor(customClient?: IGeminiClient | null, model?: string, apiKey?: string | null) {
+    this.modelName = model || env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
-    if (customClient) {
+    if (customClient !== undefined) {
       this.client = customClient;
-    } else if (env.GEMINI_API_KEY) {
-      this.client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+    } else {
+      const key =
+        apiKey !== undefined
+          ? apiKey
+          : process.env.NODE_ENV === 'test'
+            ? undefined
+            : env.GEMINI_API_KEY;
+      if (key) {
+        this.client = new GoogleGenAI({ apiKey: key });
+      }
     }
   }
 

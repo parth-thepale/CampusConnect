@@ -21,7 +21,7 @@ async function runLiveSmokeTest() {
   console.log('\n============================================================');
   console.log('RUNNING LIVE GEMINI AI SMOKE TEST');
   console.log('============================================================');
-  console.log('Target Model:', process.env.GEMINI_MODEL || 'gemini-2.5-flash');
+  console.log('Target Model:', process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite');
 
   try {
     const service = new GeminiService();
@@ -49,7 +49,7 @@ async function runLiveSmokeTest() {
     console.log('============================================================\n');
   } catch (err: any) {
     console.error('LIVE GEMINI SMOKE TEST FAILED:', err?.message || err);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 
