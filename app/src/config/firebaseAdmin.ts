@@ -11,7 +11,11 @@ export function ensureFirebaseAdmin(): admin.app.App {
 
   const options: admin.AppOptions = {};
 
-  const projectId = env.FIREBASE_PROJECT_ID || env.GOOGLE_CLOUD_PROJECT;
+  const projectId =
+    env.FIREBASE_PROJECT_ID ||
+    env.GOOGLE_CLOUD_PROJECT ||
+    process.env.GCLOUD_PROJECT ||
+    'campusconnect-512507';
   if (projectId) {
     options.projectId = projectId;
   }

@@ -5,8 +5,12 @@ export const app = createApp();
 const PORT = env.PORT;
 const HOST = '0.0.0.0';
 
-// In serverless environments (e.g. Vercel), export the handler without binding to a port
-if (process.env.VERCEL !== '1') {
+// In serverless / Cloud Functions environments, export the handler without binding to a port
+if (
+  process.env.VERCEL !== '1' &&
+  !process.env.FUNCTION_TARGET &&
+  !process.env.K_SERVICE
+) {
   const server = app.listen(PORT, HOST, () => {
     console.log(`\n==================================================`);
     console.log(`CampusConnect Backend is RUNNING!`);
