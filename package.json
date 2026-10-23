@@ -8,6 +8,7 @@
     "start": "npm --prefix app start",
     "dev": "npm --prefix app run dev",
     "test": "npm --prefix app test",
-    "typecheck": "npm --prefix app run typecheck"
+    "typecheck": "npm --prefix app run typecheck",
+    "smoke:ai": "npm --prefix app run smoke:ai"
   }
 }

@@ -6,14 +6,45 @@ import {
   ForbiddenError,
   ValidationError,
   ConflictError,
+  AiServiceUnavailableError,
 } from '../errors/AppError';
 import { TicketService } from './ticketService';
+import { IAiService, AiDraftAnalysisResult } from '../types/ai';
 
 export class IntakeService {
   constructor(
     private intakeRepo: IIntakeRepository,
-    private ticketService: TicketService
+    private ticketService: TicketService,
+    private aiService?: IAiService
   ) {}
+
+  async analyzeIntake(
+    intakeId: string,
+    requesterUid: string,
+    requesterRole: Role
+  ): Promise<AiDraftAnalysisResult> {
+    if (!this.aiService) {
+      throw new AiServiceUnavailableError();
+    }
+
+    const intake = await this.getIntake(intakeId, requesterUid, requesterRole);
+
+    if (intake.status === 'confirmed') {
+      throw new ConflictError(
+        'Complaint intake is already confirmed. Re-analysis of confirmed tickets is not permitted.'
+      );
+    }
+
+    return await this.aiService.analyzeComplaintDraft(
+      intake.description,
+      intake.attachments?.[0],
+      {
+        location: intake.location,
+        category: intake.category,
+        additionalDetails: intake.additionalDetails,
+      }
+    );
+  }
 
   async createIntake(
     createdByUid: string,

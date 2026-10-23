@@ -35,6 +35,11 @@ export interface ITicketRepository {
   update(ticketId: string, data: Partial<Ticket>, event?: TicketEvent): Promise<Ticket>;
   list(filter: TicketFilter): Promise<{ items: Ticket[]; total: number }>;
   getNextTicketNumber(): Promise<string>;
+  findRecentCandidates(options: {
+    excludeTicketId: string;
+    category?: Category;
+    limit: number;
+  }): Promise<Ticket[]>;
 }
 
 export interface IEventRepository {

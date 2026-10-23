@@ -145,5 +145,30 @@ export function createStaffRoutes(
     }
   );
 
+  /**
+   * GET /api/staff/tickets/:ticketId/duplicates
+   * Retrieve bounded potential duplicate candidates for staff review.
+   * Advisory only: does not merge tickets or modify state.
+   */
+  router.get(
+    '/tickets/:ticketId/duplicates',
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const result = await ticketService.getDuplicateCandidates(
+          req.params.ticketId,
+          req.user!.uid,
+          req.user!.role
+        );
+
+        res.status(200).json({
+          success: true,
+          data: result,
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
   return router;
 }

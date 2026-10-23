@@ -168,6 +168,28 @@ export class FirestoreTicketRepository implements ITicketRepository {
 
     return { items, total };
   }
+
+  async findRecentCandidates(options: {
+    excludeTicketId: string;
+    category?: Category;
+    limit: number;
+  }): Promise<Ticket[]> {
+    let query: FirebaseFirestore.Query = this.collection;
+
+    if (options.category) {
+      query = query.where('category', '==', options.category);
+    }
+
+    query = query.orderBy('createdAt', 'desc');
+
+    const boundedLimit = Math.min(options.limit || 10, 20);
+    // Query bounded limit + 1 to account for excluding target ticket
+    const snap = await query.limit(boundedLimit + 1).get();
+    return snap.docs
+      .map((d) => d.data() as Ticket)
+      .filter((t) => t.ticketId !== options.excludeTicketId)
+      .slice(0, boundedLimit);
+  }
 }
 
 export class FirestoreEventRepository implements IEventRepository {

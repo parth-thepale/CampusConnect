@@ -2,10 +2,14 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { IRepositoryRegistry } from './repositories/interfaces';
 import { getRepositories } from './repositories';
+import { IAiService } from './types/ai';
 import { createApiRouter } from './routes';
 import { errorHandler } from './middleware/errorHandler';
 
-export function createApp(customRepos?: IRepositoryRegistry): Express {
+export function createApp(
+  customRepos?: IRepositoryRegistry,
+  customAiService?: IAiService
+): Express {
   const app = express();
   const repositories = customRepos || getRepositories();
 
@@ -35,7 +39,7 @@ export function createApp(customRepos?: IRepositoryRegistry): Express {
   });
 
   // Mount API router at /api
-  app.use('/api', createApiRouter(repositories));
+  app.use('/api', createApiRouter(repositories, customAiService));
 
   // 404 handler for unmatched routes
   app.use((req: Request, res: Response) => {

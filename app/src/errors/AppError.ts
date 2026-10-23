@@ -52,3 +52,11 @@ export class InvalidTransitionError extends AppError {
     );
   }
 }
+
+export class AiServiceUnavailableError extends AppError {
+  constructor(
+    message = 'Gemini AI service is temporarily unavailable or not configured. Set GEMINI_API_KEY in server environment to enable AI assistance.'
+  ) {
+    super(503, 'AI_SERVICE_UNAVAILABLE', message);
+  }
+}

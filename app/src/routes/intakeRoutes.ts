@@ -106,5 +106,29 @@ export function createIntakeRoutes(
     }
   );
 
+  /**
+   * POST /api/intakes/:intakeId/analyze
+   * Analyze complaint draft with Gemini AI for summarization, missing info, and clarification question.
+   * Safe & advisory: does not create a ticket, does not confirm draft.
+   */
+  router.post(
+    '/:intakeId/analyze',
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const result = await intakeService.analyzeIntake(
+          req.params.intakeId,
+          req.user!.uid,
+          req.user!.role
+        );
+        res.status(200).json({
+          success: true,
+          data: result,
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
   return router;
 }

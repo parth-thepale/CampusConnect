@@ -18,12 +18,15 @@ import {
   ForbiddenError,
   ValidationError,
   InvalidTransitionError,
+  AiServiceUnavailableError,
 } from '../errors/AppError';
+import { IAiService, DuplicateCandidate } from '../types/ai';
 
 export class TicketService {
   constructor(
     private ticketRepo: ITicketRepository,
-    private eventRepo: IEventRepository
+    private eventRepo: IEventRepository,
+    private aiService?: IAiService
   ) {}
 
   async createFromIntake(data: {
@@ -259,5 +262,70 @@ export class TicketService {
     };
 
     return await this.eventRepo.create(event);
+  }
+
+  async getDuplicateCandidates(
+    ticketId: string,
+    actorUid: string,
+    actorRole: Role
+  ): Promise<{
+    ticketId: string;
+    ticketNumber: string;
+    candidateCount: number;
+    candidates: DuplicateCandidate[];
+  }> {
+    if (actorRole !== 'staff' && actorRole !== 'admin') {
+      throw new ForbiddenError('Only authorized staff can review potential duplicate tickets');
+    }
+
+    const ticket = await this.ticketRepo.findById(ticketId);
+    if (!ticket) {
+      throw new NotFoundError('Ticket');
+    }
+
+    if (!this.aiService) {
+      throw new AiServiceUnavailableError();
+    }
+
+    // Retrieve bounded recent candidate tickets (max 10) in matching category
+    const recentCandidates = await this.ticketRepo.findRecentCandidates({
+      excludeTicketId: ticket.ticketId,
+      category: ticket.category,
+      limit: 10,
+    });
+
+    if (recentCandidates.length === 0) {
+      return {
+        ticketId: ticket.ticketId,
+        ticketNumber: ticket.ticketNumber,
+        candidateCount: 0,
+        candidates: [],
+      };
+    }
+
+    // Map to minimal, privacy-safe fields for model evaluation (no student names, emails, UIDs, or staff notes)
+    const safeCandidates = recentCandidates.map((c) => ({
+      ticketId: c.ticketId,
+      ticketNumber: c.ticketNumber,
+      description: c.description,
+      location: c.location,
+      category: c.category,
+      status: c.status,
+      createdAt: c.createdAt,
+    }));
+
+    const candidates = await this.aiService.findDuplicateCandidates(
+      ticket.description,
+      ticket.category,
+      ticket.location,
+      safeCandidates
+    );
+
+    return {
+      ticketId: ticket.ticketId,
+      ticketNumber: ticket.ticketNumber,
+      candidateCount: candidates.length,
+      candidates,
+    };
   }
 }

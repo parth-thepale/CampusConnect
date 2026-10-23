@@ -65,7 +65,12 @@ export interface AiDraftAnalysisResult {
 export interface IAiService {
   analyzeComplaintDraft(
     text: string,
-    photoUrl?: string
+    photoUrl?: string,
+    context?: {
+      location?: string;
+      category?: Category;
+      additionalDetails?: Record<string, unknown>;
+    }
   ): Promise<AiDraftAnalysisResult>;
 
   findDuplicateCandidates(

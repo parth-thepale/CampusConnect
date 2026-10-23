@@ -153,6 +153,25 @@ export class MemoryTicketRepository implements ITicketRepository {
     return { items, total };
   }
 
+  async findRecentCandidates(options: {
+    excludeTicketId: string;
+    category?: Category;
+    limit: number;
+  }): Promise<Ticket[]> {
+    let candidates = Array.from(this.tickets.values()).filter(
+      (t) => t.ticketId !== options.excludeTicketId
+    );
+
+    if (options.category) {
+      candidates = candidates.filter((t) => t.category === options.category);
+    }
+
+    // Sort newest first
+    candidates.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const boundedLimit = Math.min(options.limit || 10, 20);
+    return candidates.slice(0, boundedLimit).map((t) => JSON.parse(JSON.stringify(t)));
+  }
+
   clear(): void {
     this.tickets.clear();
     this.ticketCounter = 1000;
