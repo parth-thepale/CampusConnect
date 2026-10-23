@@ -5,11 +5,11 @@ export const app = createApp();
 const PORT = env.PORT;
 const HOST = '0.0.0.0';
 
-// In serverless / Cloud Functions environments, export the handler without binding to a port
+// In serverless / Cloud Functions environments, export the handler without binding to a port.
+// In Cloud Run (where K_SERVICE is set) or standalone Node, the HTTP server listener must run.
 if (
   process.env.VERCEL !== '1' &&
-  !process.env.FUNCTION_TARGET &&
-  !process.env.K_SERVICE
+  !process.env.FUNCTION_TARGET
 ) {
   const server = app.listen(PORT, HOST, () => {
     console.log(`\n==================================================`);

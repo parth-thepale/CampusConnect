@@ -1,5 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
 import { IRepositoryRegistry } from './repositories/interfaces';
 import { getRepositories } from './repositories';
 import { isFirebaseConfigured } from './repositories/firestore/client';
@@ -127,7 +129,33 @@ export function createApp(
     )
   );
 
-  // 404 handler for unmatched routes
+  // Unmatched /api handler strictly returning structured 404 JSON (never HTML)
+  app.use('/api', (req: Request, res: Response) => {
+    res.status(404).json({
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message: `Route '${req.method} ${req.originalUrl}' not found`,
+      },
+    });
+  });
+
+  // Static assets & SPA fallback for Cloud Run / Google AI Studio containerized deployments
+  const candidatePublicDirs = [
+    path.resolve(__dirname, '../../public'),
+    path.resolve(process.cwd(), 'public'),
+    path.resolve(__dirname, '../public'),
+  ];
+  const publicDir = candidatePublicDirs.find((dir) => fs.existsSync(path.join(dir, 'index.html')));
+
+  if (publicDir) {
+    app.use(express.static(publicDir));
+    app.get('*', (_req: Request, res: Response) => {
+      res.sendFile(path.join(publicDir, 'index.html'));
+    });
+  }
+
+  // 404 handler for any remaining unmatched non-GET routes
   app.use((req: Request, res: Response) => {
     res.status(404).json({
       success: false,
