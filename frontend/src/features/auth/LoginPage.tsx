@@ -397,7 +397,7 @@ export const LoginPage: React.FC = () => {
           }}
         >
           <ShieldCheck size={16} color="var(--color-primary)" />
-          <span>Protected by Firebase Authentication &amp; Role-Based Authorization</span>
+          <span>Protected by CampusConnect Authentication &amp; Role-Based Authorization</span>
         </div>
       </div>
     </div>

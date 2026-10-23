@@ -192,9 +192,7 @@ export function renderAuthTestPage(): string {
       margin-top: 12px;
     }
   </style>
-  <!-- Firebase Compat App & Auth SDKs (CDN) -->
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <!-- CampusConnect Test Harness Assets -->
 </head>
 <body>
   <div class="container">
@@ -211,7 +209,7 @@ export function renderAuthTestPage(): string {
     </header>
 
     <div id="config-notice" class="alert alert-info">
-      Initializing diagnostic client and checking Firebase configuration...
+      Initializing diagnostic client and checking backend configuration...
     </div>
 
     <!-- Active Identity Overview -->
@@ -223,7 +221,7 @@ export function renderAuthTestPage(): string {
           <span id="auth-state" class="status-value" style="color: var(--error);">Signed Out</span>
         </div>
         <div class="status-row">
-          <span class="status-label">Firebase UID:</span>
+          <span class="status-label">User UID:</span>
           <span id="auth-uid" class="status-value">—</span>
         </div>
         <div class="status-row">
@@ -328,61 +326,16 @@ export function renderAuthTestPage(): string {
         const json = await res.json();
         const notice = document.getElementById('config-notice');
 
-        if (!json.success || !json.data || !json.data.apiKey) {
-          notice.className = 'alert alert-warning';
-          notice.innerHTML = '<strong>Notice:</strong> Firebase client credentials (FIREBASE_CLIENT_API_KEY) are not yet configured in server environment. Google Sign-In requires valid client credentials; email OTP verification code generation and API testing are fully operational.';
-          log('Firebase client config is pending environment setup.');
-          return;
-        }
-
-        firebase.initializeApp(json.data);
-        firebaseReady = true;
-
         notice.className = 'alert alert-info';
-        notice.innerHTML = \`<strong>Firebase Configured:</strong> Project: <code>\${json.data.projectId}</code> | Domain: <code>\${json.data.authDomain}</code>\`;
-
-        firebase.auth().onAuthStateChanged(async (user) => {
-          if (user) {
-            currentIdToken = await user.getIdToken();
-            document.getElementById('auth-state').textContent = 'Signed In';
-            document.getElementById('auth-state').style.color = 'var(--success)';
-            document.getElementById('auth-uid').textContent = user.uid;
-            document.getElementById('auth-email').textContent = user.email || 'None';
-            document.getElementById('auth-token').textContent = currentIdToken.slice(0, 24) + '... (valid Bearer token)';
-            document.getElementById('btn-signout').style.display = 'inline-flex';
-
-            // Resolve role via /api/auth/me
-            await testMeEndpoint(true);
-          } else {
-            currentIdToken = null;
-            document.getElementById('auth-state').textContent = 'Signed Out';
-            document.getElementById('auth-state').style.color = 'var(--error)';
-            document.getElementById('auth-uid').textContent = '—';
-            document.getElementById('auth-email').textContent = '—';
-            document.getElementById('auth-role').textContent = '—';
-            document.getElementById('auth-token').textContent = '—';
-            document.getElementById('btn-signout').style.display = 'none';
-          }
-        });
+        notice.innerHTML = '<strong>Backend Auth Active:</strong> Mode: <code>' + (json.data?.authMode || 'jwt') + '</code> | Direct OTP &amp; Bearer JWT sessions enabled.';
+        log('Backend auth initialized:', json.data);
       } catch (err) {
         log('Error loading /api/auth/config:', err.message);
       }
     }
 
     async function handleGoogleSignIn() {
-      if (!firebaseReady) {
-        alert('Firebase client credentials must be configured to run live Google Sign-In.');
-        return;
-      }
-      try {
-        log('Starting Google Sign-In popup...');
-        const provider = new firebase.auth.GoogleAuthProvider();
-        const result = await firebase.auth().signInWithPopup(provider);
-        log('Google Sign-In successful for:', result.user.email);
-      } catch (err) {
-        log('Google Sign-In failed:', err.message);
-        alert('Google Sign-In Error: ' + err.message);
-      }
+      alert('Google Sign-In uses Google Identity Services. In development, use 6-Digit Email OTP or Dev Auth headers.');
     }
 
     async function handleRequestOtp() {
@@ -444,22 +397,20 @@ export function renderAuthTestPage(): string {
           return;
         }
 
-        const customToken = data.data.customToken;
-        log('Custom token received. Exchanging with Firebase Authentication...');
+        const token = data.data.token || data.data.customToken;
+        currentIdToken = token;
+        log('Session JWT token received from backend.');
 
-        if (firebaseReady) {
-          const userCred = await firebase.auth().signInWithCustomToken(customToken);
-          log('Firebase signInWithCustomToken successful for UID:', userCred.user.uid);
-          alert('Successfully signed in via 6-Digit Email OTP!');
-        } else {
-          log('Notice: Firebase client SDK not initialized (missing client config). Mocking local custom token exchange display.');
-          document.getElementById('auth-state').textContent = 'Verified via Custom Token';
-          document.getElementById('auth-state').style.color = 'var(--success)';
-          document.getElementById('auth-uid').textContent = data.data.user.uid;
-          document.getElementById('auth-email').textContent = data.data.user.email;
-          document.getElementById('auth-role').textContent = data.data.user.role;
-          alert('Verification successful! Custom token generated: ' + customToken.slice(0, 20) + '...');
-        }
+        document.getElementById('auth-state').textContent = 'Signed In';
+        document.getElementById('auth-state').style.color = 'var(--success)';
+        document.getElementById('auth-uid').textContent = data.data.user.uid;
+        document.getElementById('auth-email').textContent = data.data.user.email || 'None';
+        document.getElementById('auth-role').textContent = data.data.user.role;
+        document.getElementById('auth-token').textContent = token.slice(0, 24) + '... (valid Bearer token)';
+        document.getElementById('btn-signout').style.display = 'inline-flex';
+
+        await testMeEndpoint(true);
+        alert('Successfully signed in via 6-Digit Email OTP!');
       } catch (err) {
         log('Error verifying OTP:', err.message);
         alert('Verification error: ' + err.message);
@@ -467,10 +418,14 @@ export function renderAuthTestPage(): string {
     }
 
     async function handleSignOut() {
-      if (firebaseReady) {
-        await firebase.auth().signOut();
-      }
       currentIdToken = null;
+      document.getElementById('auth-state').textContent = 'Signed Out';
+      document.getElementById('auth-state').style.color = 'var(--error)';
+      document.getElementById('auth-uid').textContent = '—';
+      document.getElementById('auth-email').textContent = '—';
+      document.getElementById('auth-role').textContent = '—';
+      document.getElementById('auth-token').textContent = '—';
+      document.getElementById('btn-signout').style.display = 'none';
       log('User signed out.');
     }
 

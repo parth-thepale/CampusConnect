@@ -20,7 +20,7 @@ describe('Frontend Build & Security Inspection Tests', () => {
     expect(fs.existsSync(assetsDir)).toBe(true);
 
     const assetFiles = fs.readdirSync(assetsDir);
-    const jsFiles = assetFiles.filter((f) => f.endsWith('.js'));
+    const jsFiles = assetFiles.filter((f: string) => f.endsWith('.js'));
     expect(jsFiles.length).toBeGreaterThan(0);
 
     const forbiddenPatterns = [

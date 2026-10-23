@@ -4,10 +4,10 @@ import path from 'path';
 import fs from 'fs';
 import { IRepositoryRegistry } from './repositories/interfaces';
 import { getRepositories } from './repositories';
-import { isFirebaseConfigured } from './repositories/firestore/client';
+import { getDbPool, isDatabaseConnected } from './config/database';
 import { IAiService } from './types/ai';
 import { IEmailDeliveryService } from './services/emailService';
-import { IFirebaseAuthClient } from './services/firebaseAuthClient';
+import { ITokenService } from './services/tokenService';
 import { createApiRouter } from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { renderAuthTestPage } from './views/authTestPage';
@@ -18,7 +18,7 @@ export function createApp(
   customRepos?: IRepositoryRegistry,
   customAiService?: IAiService,
   customEmailService?: IEmailDeliveryService,
-  customFirebaseAuth?: IFirebaseAuthClient
+  customTokenService?: ITokenService
 ): Express {
   const app = express();
   const repositories = customRepos || getRepositories();
@@ -59,7 +59,7 @@ export function createApp(
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-  // Root health probes for Render / Cloud Run / Kubernetes
+  // Root health probes for Cloud Run / Kubernetes / Render
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok', service: 'campusconnect-backend' });
   });
@@ -68,14 +68,24 @@ export function createApp(
     res.status(200).json({ status: 'ok', service: 'campusconnect-backend' });
   });
 
-  app.get('/readyz', (_req: Request, res: Response) => {
-    // In production mode with Firestore, verify Firebase/Firestore initialization
+  app.get('/readyz', async (_req: Request, res: Response) => {
+    // In production mode without in-memory override, verify database connectivity
     if (env.NODE_ENV === 'production' && !env.USE_IN_MEMORY_REPO) {
-      if (!isFirebaseConfigured()) {
+      const pool = getDbPool();
+      if (!pool) {
         res.status(503).json({
           status: 'not_ready',
           service: 'campusconnect-backend',
-          reason: 'Database connection not initialized',
+          reason: 'Database connection not initialized (DATABASE_URL missing)',
+        });
+        return;
+      }
+      const connected = await isDatabaseConnected();
+      if (!connected) {
+        res.status(503).json({
+          status: 'not_ready',
+          service: 'campusconnect-backend',
+          reason: 'Database connection probe failed',
         });
         return;
       }
@@ -125,7 +135,7 @@ export function createApp(
       repositories,
       customAiService,
       customEmailService,
-      customFirebaseAuth
+      customTokenService
     )
   );
 

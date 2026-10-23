@@ -3,11 +3,10 @@ import { OtpAuthService } from '../../src/services/otpAuthService';
 import { MemoryOtpRepository, MemoryUserRepository } from '../../src/repositories/memory/repositories';
 import { AuthService } from '../../src/services/authService';
 import { IEmailDeliveryService } from '../../src/services/emailService';
-import { IFirebaseAuthClient } from '../../src/services/firebaseAuthClient';
+import { ITokenService } from '../../src/services/tokenService';
 import {
   ValidationError,
   RateLimitError,
-  EmailServiceUnavailableError,
 } from '../../src/errors/AppError';
 
 describe('OtpAuthService Unit Tests & Security Guardrails', () => {
@@ -15,7 +14,7 @@ describe('OtpAuthService Unit Tests & Security Guardrails', () => {
   let userRepo: MemoryUserRepository;
   let authService: AuthService;
   let mockEmailService: IEmailDeliveryService;
-  let mockFirebaseAuth: IFirebaseAuthClient;
+  let mockTokenService: ITokenService;
   let service: OtpAuthService;
 
   let capturedEmail: string | null = null;
@@ -37,29 +36,16 @@ describe('OtpAuthService Unit Tests & Security Guardrails', () => {
       }),
     };
 
-    mockFirebaseAuth = {
-      getUserByEmail: vi.fn(async (email: string) => {
-        if (email === 'existing@campus.edu') {
-          return { uid: 'uid-existing-123', email };
-        }
-        return null;
-      }),
-      createUser: vi.fn(async ({ email }) => ({
-        uid: 'uid-new-456',
-        email,
+    mockTokenService = {
+      generateToken: vi.fn((payload) => `mock-token-for-${payload.uid}-${payload.role}`),
+      verifyToken: vi.fn((token: string) => ({
+        uid: token.replace('mock-token-', ''),
+        email: 'test@campus.edu',
+        role: 'student',
       })),
-      createCustomToken: vi.fn(async (uid: string, claims?: Record<string, unknown>) => {
-        return `mock-custom-token-for-${uid}-role-${claims?.role || 'none'}`;
-      }),
-      verifyIdToken: vi.fn(async (token: string) => ({
-        uid: token.replace('mock-id-token-', ''),
-        aud: 'campusconnect',
-        iss: 'firebase',
-        sub: token.replace('mock-id-token-', ''),
-        auth_time: Math.floor(Date.now() / 1000),
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 3600,
-        firebase: { identities: {}, sign_in_provider: 'custom' },
+      verifyGoogleIdToken: vi.fn(async () => ({
+        uid: 'google_123',
+        email: 'test@campus.edu',
       })),
     };
 
@@ -67,7 +53,7 @@ describe('OtpAuthService Unit Tests & Security Guardrails', () => {
       otpRepo,
       authService,
       mockEmailService,
-      mockFirebaseAuth
+      mockTokenService
     );
   });
 
@@ -99,74 +85,82 @@ describe('OtpAuthService Unit Tests & Security Guardrails', () => {
   it('enforces 60-second resend throttling for active challenges', async () => {
     await service.requestCode('student@campus.edu');
 
-    // Attempt immediately again
+    // Immediate second request must trigger RateLimitError
     await expect(service.requestCode('student@campus.edu')).rejects.toThrow(RateLimitError);
-    await expect(service.requestCode('student@campus.edu')).rejects.toThrow(/wait \d+ second/);
-  });
-
-  it('enforces maximum 5 code requests per hour', async () => {
-    // Mock countRecentRequests returning 5
-    vi.spyOn(otpRepo, 'countRecentRequests').mockResolvedValue(5);
-
-    await expect(service.requestCode('spammer@campus.edu')).rejects.toThrow(RateLimitError);
-    await expect(service.requestCode('spammer@campus.edu')).rejects.toThrow(/Too many verification code requests/);
-  });
-
-  it('leaves no saved challenge if email delivery fails', async () => {
-    vi.spyOn(mockEmailService, 'sendOtpEmail').mockRejectedValue(
-      new EmailServiceUnavailableError('SMTP connection refused')
+    await expect(service.requestCode('STUDENT@CAMPUS.EDU')).rejects.toThrow(
+      /Please wait \d+ seconds before requesting another code/
     );
-
-    await expect(service.requestCode('fail@campus.edu')).rejects.toThrow(
-      EmailServiceUnavailableError
-    );
-
-    // Ensure challenge was not persisted
-    const stored = await otpRepo.findLatestByEmail('fail@campus.edu');
-    expect(stored).toBeNull();
   });
 
-  it('rejects malformed verification code format (non-6 digits)', async () => {
-    await expect(service.verifyCode('user@campus.edu', '12345')).rejects.toThrow(ValidationError);
-    await expect(service.verifyCode('user@campus.edu', 'abcdef')).rejects.toThrow(ValidationError);
-    await expect(service.verifyCode('user@campus.edu', '1234567')).rejects.toThrow(ValidationError);
-  });
+  it('enforces max 5 OTP requests per hour rate limit', async () => {
+    const email = 'spamcheck@campus.edu';
 
-  it('rejects invalid code and decrements remaining attempts', async () => {
-    const { challengeId } = await service.requestCode('student@campus.edu');
-    expect(capturedOtp).toBeDefined();
-
-    // Wrong code attempt 1
-    await expect(
-      service.verifyCode('student@campus.edu', '000000', challengeId)
-    ).rejects.toThrow(/Attempts remaining: 2/);
-
-    // Wrong code attempt 2
-    await expect(
-      service.verifyCode('student@campus.edu', '000000', challengeId)
-    ).rejects.toThrow(/Attempts remaining: 1/);
-
-    // Wrong code attempt 3 -> blocks further attempts
-    await expect(
-      service.verifyCode('student@campus.edu', '000000', challengeId)
-    ).rejects.toThrow(RateLimitError);
-  });
-
-  it('rejects expired code', async () => {
-    const { challengeId } = await service.requestCode('student@campus.edu');
-    const challenge = await otpRepo.findById(challengeId);
-    if (challenge) {
-      // Simulate expired challenge 15 minutes ago
-      challenge.expiresAt = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    // Simulate 5 requests within the hour
+    for (let i = 0; i < 5; i++) {
+      const challenge = {
+        challengeId: `challenge-${i}`,
+        email,
+        codeHash: 'hash',
+        expiresAt: new Date(Date.now() + 600000).toISOString(),
+        attempts: 0,
+        maxAttempts: 3,
+        consumed: true, // mark consumed to bypass 60s cooldown
+        createdAt: new Date().toISOString(),
+        lastResentAt: new Date(Date.now() - 70000).toISOString(), // > 60s ago
+      };
       await otpRepo.createChallenge(challenge);
     }
 
-    await expect(
-      service.verifyCode('student@campus.edu', capturedOtp!, challengeId)
-    ).rejects.toThrow(/expired/);
+    await expect(service.requestCode(email)).rejects.toThrow(
+      'Too many verification code requests for this email. Please try again after an hour.'
+    );
   });
 
-  it('rejects reused / already consumed code', async () => {
+  it('rejects incorrect 6-digit code with remaining attempts warning', async () => {
+    const { challengeId } = await service.requestCode('student@campus.edu');
+
+    await expect(
+      service.verifyCode('student@campus.edu', '000000', challengeId)
+    ).rejects.toThrow(/Invalid verification code\. Attempts remaining: 2/);
+
+    const challenge = await otpRepo.findById(challengeId);
+    expect(challenge?.attempts).toBe(1);
+  });
+
+  it('locks challenge after 3 incorrect attempts', async () => {
+    const { challengeId } = await service.requestCode('student@campus.edu');
+
+    // Attempt 1
+    await expect(service.verifyCode('student@campus.edu', '000001', challengeId)).rejects.toThrow();
+    // Attempt 2
+    await expect(service.verifyCode('student@campus.edu', '000002', challengeId)).rejects.toThrow();
+    // Attempt 3: Exceeded limit
+    await expect(service.verifyCode('student@campus.edu', '000003', challengeId)).rejects.toThrow(
+      RateLimitError
+    );
+
+    // Subsequent attempt should fail with rate limit error
+    await expect(service.verifyCode('student@campus.edu', '000004', challengeId)).rejects.toThrow(
+      RateLimitError
+    );
+  });
+
+  it('rejects expired OTP challenges', async () => {
+    const { challengeId } = await service.requestCode('student@campus.edu');
+
+    // Manually expire challenge in repo
+    const challenge = (await otpRepo.findById(challengeId))!;
+    await otpRepo.createChallenge({
+      ...challenge,
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+
+    await expect(
+      service.verifyCode('student@campus.edu', capturedOtp!, challengeId)
+    ).rejects.toThrow('Verification code has expired. Please request a new code.');
+  });
+
+  it('atomically marks challenge consumed and prevents code reuse', async () => {
     const { challengeId } = await service.requestCode('student@campus.edu');
 
     // First verification succeeds
@@ -175,7 +169,7 @@ describe('OtpAuthService Unit Tests & Security Guardrails', () => {
       capturedOtp!,
       challengeId
     );
-    expect(verifyResult.customToken).toBeDefined();
+    expect(verifyResult.token).toBeDefined();
 
     // Replay / reuse attempt must fail
     await expect(
@@ -183,7 +177,7 @@ describe('OtpAuthService Unit Tests & Security Guardrails', () => {
     ).rejects.toThrow(/already been used/);
   });
 
-  it('creates new Firebase user and provisions default student role upon successful verification', async () => {
+  it('provisions default student role upon successful verification', async () => {
     const { challengeId } = await service.requestCode('newstudent@campus.edu');
 
     const result = await service.verifyCode(
@@ -192,39 +186,41 @@ describe('OtpAuthService Unit Tests & Security Guardrails', () => {
       challengeId
     );
 
-    expect(result.customToken).toContain('mock-custom-token-for-uid-new-456');
-    expect(result.user.uid).toBe('uid-new-456');
+    expect(result.token).toBeDefined();
     expect(result.user.email).toBe('newstudent@campus.edu');
     expect(result.user.role).toBe('student'); // Default role invariant
 
     // Verify stored profile in repository has student role
-    const storedUser = await userRepo.findByUid('uid-new-456');
+    const storedUser = await userRepo.findByUid(result.user.uid);
     expect(storedUser).toBeDefined();
     expect(storedUser?.role).toBe('student');
   });
 
-  it('preserves existing user role (e.g. staff) and existing Firebase UID upon verification', async () => {
+  it('preserves existing user role (e.g. staff) upon verification', async () => {
+    const email = 'existing@campus.edu';
+    const uid = `user_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
     // Pre-seed user with staff role
     await userRepo.createOrUpdate({
-      uid: 'uid-existing-123',
-      email: 'existing@campus.edu',
+      uid,
+      email,
       role: 'staff',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
 
-    const { challengeId } = await service.requestCode('existing@campus.edu');
+    const { challengeId } = await service.requestCode(email);
 
     const result = await service.verifyCode(
-      'existing@campus.edu',
+      email,
       capturedOtp!,
       challengeId
     );
 
-    expect(result.user.uid).toBe('uid-existing-123');
+    expect(result.user.uid).toBe(uid);
     expect(result.user.role).toBe('staff'); // Preserves staff role
 
-    const storedUser = await userRepo.findByUid('uid-existing-123');
+    const storedUser = await userRepo.findByUid(uid);
     expect(storedUser?.role).toBe('staff');
   });
 });

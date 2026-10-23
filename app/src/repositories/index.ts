@@ -1,6 +1,7 @@
 import { env } from '../config/env';
 import { IRepositoryRegistry } from './interfaces';
-import { createFirestoreRepositories } from './firestore/repositories';
+import { getDbPool } from '../config/database';
+import { createPostgresRepositories } from './postgres/repositories';
 import { createMemoryRepositories } from './memory/repositories';
 
 let activeRegistry: IRepositoryRegistry | null = null;
@@ -10,10 +11,13 @@ export function getRepositories(): IRepositoryRegistry {
     return activeRegistry;
   }
 
-  if (env.USE_IN_MEMORY_REPO || env.NODE_ENV === 'test') {
-    activeRegistry = createMemoryRepositories();
+  const pool = getDbPool();
+
+  if (pool && !env.USE_IN_MEMORY_REPO) {
+    activeRegistry = createPostgresRepositories(pool);
   } else {
-    activeRegistry = createFirestoreRepositories();
+    // Fail-safe in-memory repository for unit tests and local mock development
+    activeRegistry = createMemoryRepositories();
   }
 
   return activeRegistry;

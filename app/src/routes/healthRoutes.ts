@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { isFirebaseConfigured } from '../repositories/firestore/client';
+import { getDbPool, isDatabaseConnected } from '../config/database';
 import { env } from '../config/env';
 
 export function createHealthRoutes(): Router {
@@ -25,13 +25,23 @@ export function createHealthRoutes(): Router {
     res.status(200).json({ status: 'ok', service: 'campusconnect-backend' });
   });
 
-  router.get('/readyz', (_req: Request, res: Response) => {
+  router.get('/readyz', async (_req: Request, res: Response) => {
     if (env.NODE_ENV === 'production' && !env.USE_IN_MEMORY_REPO) {
-      if (!isFirebaseConfigured()) {
+      const pool = getDbPool();
+      if (!pool) {
         res.status(503).json({
           status: 'not_ready',
           service: 'campusconnect-backend',
-          reason: 'Database connection not initialized',
+          reason: 'Database pool not configured (DATABASE_URL missing)',
+        });
+        return;
+      }
+      const connected = await isDatabaseConnected();
+      if (!connected) {
+        res.status(503).json({
+          status: 'not_ready',
+          service: 'campusconnect-backend',
+          reason: 'Database connection probe failed',
         });
         return;
       }

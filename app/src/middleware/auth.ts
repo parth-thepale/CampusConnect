@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import * as admin from 'firebase-admin';
 import { env } from '../config/env';
 import { User, Role } from '../types/domain';
 import { AuthService } from '../services/authService';
-import { IFirebaseAuthClient, DefaultFirebaseAuthClient } from '../services/firebaseAuthClient';
+import { ITokenService, JwtTokenService } from '../services/tokenService';
 import { UnauthorizedError, ForbiddenError } from '../errors/AppError';
 
 declare global {
@@ -16,9 +15,9 @@ declare global {
 
 export function createAuthMiddleware(
   authService: AuthService,
-  customFirebaseAuth?: IFirebaseAuthClient
+  customTokenService?: ITokenService
 ) {
-  const firebaseAuth = customFirebaseAuth || new DefaultFirebaseAuthClient();
+  const tokenService = customTokenService || new JwtTokenService();
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -36,8 +35,7 @@ export function createAuthMiddleware(
             displayName: `Dev User (${devUid})`,
           });
 
-          // In dev mode, if an explicit role header was passed and user has student role,
-          // temporarily apply it for this request context only
+          // In dev mode, if an explicit role header was passed, apply it for this request context only
           if (devRole && user.role !== devRole) {
             req.user = { ...user, role: devRole };
           } else {
@@ -47,21 +45,20 @@ export function createAuthMiddleware(
         }
       }
 
-      // 2. Production Security Path: Verify Firebase Bearer Token
+      // 2. Production Security Path: Verify Bearer JWT
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw new UnauthorizedError('Missing or malformed Authorization header. Expected Bearer token.');
       }
 
-      const idToken = authHeader.split('Bearer ')[1].trim();
-      if (!idToken) {
+      const token = authHeader.split('Bearer ')[1].trim();
+      if (!token) {
         throw new UnauthorizedError('Bearer token is empty');
       }
 
-      let decodedToken: admin.auth.DecodedIdToken;
+      let decodedToken;
       try {
-        decodedToken = await firebaseAuth.verifyIdToken(idToken);
+        decodedToken = tokenService.verifyToken(token);
       } catch (err: unknown) {
-        // Safe logging without leaking tokens
         const errMessage = err instanceof Error ? err.message : 'Unknown auth verification error';
         console.warn(`Token verification failed: ${errMessage}`);
         throw new UnauthorizedError('Invalid or expired authentication token');
@@ -70,7 +67,7 @@ export function createAuthMiddleware(
       // Resolve user profile & role from authoritative data store
       const user = await authService.resolveUser(decodedToken.uid, {
         email: decodedToken.email,
-        displayName: decodedToken.name,
+        displayName: decodedToken.displayName,
       });
 
       req.user = user;

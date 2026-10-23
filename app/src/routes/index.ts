@@ -3,7 +3,7 @@ import { IRepositoryRegistry } from '../repositories/interfaces';
 import { AuthService } from '../services/authService';
 import { OtpAuthService } from '../services/otpAuthService';
 import { IEmailDeliveryService } from '../services/emailService';
-import { IFirebaseAuthClient } from '../services/firebaseAuthClient';
+import { ITokenService, JwtTokenService } from '../services/tokenService';
 import { IntakeService } from '../services/intakeService';
 import { TicketService } from '../services/ticketService';
 import { IAiService } from '../types/ai';
@@ -19,17 +19,18 @@ export function createApiRouter(
   repositories: IRepositoryRegistry,
   aiService?: IAiService,
   customEmailService?: IEmailDeliveryService,
-  customFirebaseAuth?: IFirebaseAuthClient
+  customTokenService?: ITokenService
 ): Router {
   const router = Router();
   const activeAiService = aiService || new GeminiService();
+  const tokenService = customTokenService || new JwtTokenService();
 
   const authService = new AuthService(repositories.users);
   const otpAuthService = new OtpAuthService(
     repositories.otps,
     authService,
     customEmailService,
-    customFirebaseAuth
+    tokenService
   );
   const ticketService = new TicketService(
     repositories.tickets,
@@ -42,11 +43,11 @@ export function createApiRouter(
     activeAiService
   );
 
-  const authMiddleware = createAuthMiddleware(authService, customFirebaseAuth);
+  const authMiddleware = createAuthMiddleware(authService, tokenService);
 
   // Mount routes under /api
   router.use(createHealthRoutes());
-  router.use('/auth', createAuthRoutes(otpAuthService, authMiddleware));
+  router.use('/auth', createAuthRoutes(otpAuthService, authMiddleware, authService, tokenService));
   router.use('/intakes', createIntakeRoutes(intakeService, authMiddleware));
   router.use('/tickets', createTicketRoutes(ticketService, authMiddleware));
   router.use('/staff', createStaffRoutes(ticketService, authMiddleware));

@@ -4,7 +4,7 @@ import { env } from '../config/env';
 import { IOtpRepository, OtpChallenge } from '../repositories/interfaces';
 import { AuthService } from './authService';
 import { IEmailDeliveryService, SmtpEmailService } from './emailService';
-import { IFirebaseAuthClient, DefaultFirebaseAuthClient } from './firebaseAuthClient';
+import { ITokenService, JwtTokenService } from './tokenService';
 import {
   ValidationError,
   RateLimitError,
@@ -20,6 +20,7 @@ export interface RequestOtpResult {
 }
 
 export interface VerifyOtpResult {
+  token: string;
   customToken: string;
   user: {
     uid: string;
@@ -31,16 +32,16 @@ export interface VerifyOtpResult {
 
 export class OtpAuthService {
   private emailService: IEmailDeliveryService;
-  private firebaseAuth: IFirebaseAuthClient;
+  private tokenService: ITokenService;
 
   constructor(
     private otpRepo: IOtpRepository,
     private authService: AuthService,
     customEmailService?: IEmailDeliveryService,
-    customFirebaseAuth?: IFirebaseAuthClient
+    customTokenService?: ITokenService
   ) {
     this.emailService = customEmailService || new SmtpEmailService();
-    this.firebaseAuth = customFirebaseAuth || new DefaultFirebaseAuthClient();
+    this.tokenService = customTokenService || new JwtTokenService();
   }
 
   private hashCode(email: string, code: string): string {
@@ -88,7 +89,7 @@ export class OtpAuthService {
     const expiresAt = new Date(now.getTime() + 10 * 60 * 1000).toISOString(); // 10 minutes
 
     // 4. Send Email via Configured Provider FIRST
-    // Per requirement: If delivery fails, do NOT leave an active challenge
+    // If delivery fails, do NOT leave an active challenge
     await this.emailService.sendOtpEmail(email, numericCode);
 
     // 5. Store Protected Challenge (Only HMAC hash is stored; raw code is discarded)
@@ -182,27 +183,23 @@ export class OtpAuthService {
     // 5. Consume Challenge (Prevent Concurrent Reuse)
     await this.otpRepo.markConsumed(challenge.challengeId);
 
-    // 6. Find or Create Firebase User
-    let fbUser = await this.firebaseAuth.getUserByEmail(email);
-    if (!fbUser) {
-      fbUser = await this.firebaseAuth.createUser({
-        email,
-        emailVerified: true,
-      });
-    }
-
-    // 7. Resolve User Profile & Role (Default: student; preserves existing role)
-    const appUser: User = await this.authService.resolveUser(fbUser.uid, {
-      email: fbUser.email || email,
+    // 6. Find or Resolve User
+    const sanitizedEmailUid = `user_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const appUser: User = await this.authService.resolveUser(sanitizedEmailUid, {
+      email,
     });
 
-    // 8. Generate Firebase Custom Token
-    const customToken = await this.firebaseAuth.createCustomToken(fbUser.uid, {
+    // 7. Generate Signed Session JWT Token
+    const token = this.tokenService.generateToken({
+      uid: appUser.uid,
+      email: appUser.email,
       role: appUser.role,
+      displayName: appUser.displayName,
     });
 
     return {
-      customToken,
+      token,
+      customToken: token, // Backward compatibility alias
       user: {
         uid: appUser.uid,
         email: appUser.email,

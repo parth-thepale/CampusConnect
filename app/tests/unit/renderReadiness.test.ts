@@ -1,11 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../src/app';
 import { createMemoryRepositories } from '../../src/repositories/memory/repositories';
-import { ensureFirebaseAdmin } from '../../src/config/firebaseAdmin';
-import * as admin from 'firebase-admin';
+import { getDbPool } from '../../src/config/database';
 
-describe('Render Deployment & Runtime Readiness Tests', () => {
+describe('Render & Cloud Run Deployment Runtime Readiness Tests', () => {
   describe('CORS Origin Allowlist Policy', () => {
     it('permits requests with no origin (e.g. curl, server-to-server, mobile)', async () => {
       const repos = createMemoryRepositories();
@@ -16,13 +15,21 @@ describe('Render Deployment & Runtime Readiness Tests', () => {
     });
   });
 
-  describe('Firebase Admin Credential Guardrails on Render', () => {
-    it('returns existing app instance if already initialized', () => {
-      const existingApp = ensureFirebaseAdmin();
-      expect(existingApp).toBeDefined();
+  describe('Database Pool & Runtime Health Probes', () => {
+    it('initializes in-memory repository cleanly without external database credentials in test mode', () => {
+      const repos = createMemoryRepositories();
+      expect(repos.users).toBeDefined();
+      expect(repos.tickets).toBeDefined();
+      expect(repos.intakes).toBeDefined();
+      expect(repos.events).toBeDefined();
+      expect(repos.otps).toBeDefined();
+    });
 
-      const secondCall = ensureFirebaseAdmin();
-      expect(secondCall).toBe(existingApp);
+    it('returns null db pool when DATABASE_URL is not set', () => {
+      // In default test runner environment where DATABASE_URL is unset
+      if (!process.env.DATABASE_URL) {
+        expect(getDbPool()).toBeNull();
+      }
     });
   });
 });

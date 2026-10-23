@@ -8,9 +8,16 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(8080),
   GOOGLE_CLOUD_PROJECT: z.string().optional(),
-  FIREBASE_PROJECT_ID: z.string().optional(),
-  FIRESTORE_EMULATOR_HOST: z.string().optional(),
-  FIREBASE_AUTH_EMULATOR_HOST: z.string().optional(),
+
+  // Persistent Relational Database (PostgreSQL / Supabase / Cloud SQL)
+  DATABASE_URL: z.string().optional(),
+
+  // Authentication & Security Tokens
+  JWT_SECRET: z.string().default('campusconnect-jwt-default-secret-2026'),
+  AUTH_EMAIL_OTP_SECRET: z.string().default('campusconnect-dev-otp-secret-key-32b'),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+
+  // Development & Testing flags
   ALLOW_DEV_AUTH: z
     .string()
     .optional()
@@ -19,9 +26,12 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((val) => val === 'true'),
+
+  // Gemini AI Service
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-3.5-flash-lite'),
-  AUTH_EMAIL_OTP_SECRET: z.string().default('campusconnect-dev-otp-secret-key-32b'),
+
+  // Email delivery (SMTP)
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_SECURE: z
@@ -32,22 +42,24 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   EMAIL_FROM: z.string().default('CampusConnect <noreply@campusconnect.edu>'),
+
+  // Diagnostic harness toggle
   AUTH_TEST_PAGE_ENABLED: z
     .string()
     .optional()
     .transform((val) => val === 'true')
     .default('false'),
-  // Firebase client credentials for the temporary auth test harness
+
+  // Allowed CORS origins for external frontend clients (comma-separated URLs)
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
+
+  // Legacy compatibility keys (optional)
+  FIREBASE_PROJECT_ID: z.string().optional(),
   FIREBASE_CLIENT_API_KEY: z.string().optional(),
   FIREBASE_CLIENT_AUTH_DOMAIN: z.string().optional(),
   FIREBASE_CLIENT_PROJECT_ID: z.string().optional(),
-  FIREBASE_CLIENT_STORAGE_BUCKET: z.string().optional(),
-  FIREBASE_CLIENT_MESSAGING_SENDER_ID: z.string().optional(),
   FIREBASE_CLIENT_APP_ID: z.string().optional(),
-  // Render Secret File or explicit service account key path
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
-  // Allowed CORS origins for external frontend clients (comma-separated URLs)
-  CORS_ALLOWED_ORIGINS: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

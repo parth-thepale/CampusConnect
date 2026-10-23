@@ -1,18 +1,23 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { OtpAuthService } from '../services/otpAuthService';
+import { AuthService } from '../services/authService';
+import { ITokenService, JwtTokenService } from '../services/tokenService';
 import { env } from '../config/env';
-import { NotFoundError, UnauthorizedError } from '../errors/AppError';
+import { NotFoundError, UnauthorizedError, ValidationError } from '../errors/AppError';
 
 export function createAuthRoutes(
   otpAuthService: OtpAuthService,
-  authMiddleware: (req: Request, res: Response, next: NextFunction) => Promise<void>
+  authMiddleware: (req: Request, res: Response, next: NextFunction) => Promise<void>,
+  authService?: AuthService,
+  customTokenService?: ITokenService
 ): Router {
   const router = Router();
+  const tokenService = customTokenService || new JwtTokenService();
 
   /**
    * GET /api/auth/me
    * Returns current authenticated user's profile and effective role.
-   * STRICTLY PROTECTED by authMiddleware (Firebase ID Token or Dev Auth in dev mode).
+   * STRICTLY PROTECTED by authMiddleware.
    */
   router.get('/me', authMiddleware, (req: Request, res: Response) => {
     if (!req.user) {
@@ -54,7 +59,7 @@ export function createAuthRoutes(
 
   /**
    * POST /api/auth/email/verify-code
-   * Verifies the 6-digit numeric OTP and returns a Firebase custom token.
+   * Verifies the 6-digit numeric OTP and returns a session JWT token.
    * Publicly accessible, max-attempt bounded, and atomically consumed.
    */
   router.post('/email/verify-code', async (req: Request, res: Response, next: NextFunction) => {
@@ -65,7 +70,8 @@ export function createAuthRoutes(
         success: true,
         message: 'Verification successful',
         data: {
-          customToken: result.customToken,
+          token: result.token,
+          customToken: result.customToken, // Backward compatibility alias
           user: result.user,
         },
       });
@@ -75,28 +81,62 @@ export function createAuthRoutes(
   });
 
   /**
+   * POST /api/auth/google/verify
+   * Verifies Google identity token and establishes backend session JWT.
+   */
+  router.post('/google/verify', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const idToken = req.body?.credential || req.body?.idToken;
+      if (!idToken || typeof idToken !== 'string') {
+        throw new ValidationError('Google credential or idToken is required');
+      }
+
+      if (!authService) {
+        throw new Error('Auth service not configured for Google identity verification');
+      }
+
+      const googleUser = await tokenService.verifyGoogleIdToken(idToken);
+      const appUser = await authService.resolveUser(googleUser.uid, {
+        email: googleUser.email,
+        displayName: googleUser.displayName,
+      });
+
+      const token = tokenService.generateToken({
+        uid: appUser.uid,
+        email: appUser.email,
+        role: appUser.role,
+        displayName: appUser.displayName,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Google authentication successful',
+        data: {
+          token,
+          customToken: token,
+          user: {
+            uid: appUser.uid,
+            email: appUser.email,
+            role: appUser.role,
+            displayName: appUser.displayName,
+          },
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
    * GET /api/auth/config
-   * Returns public Firebase client configuration solely for the temporary test page.
-   * Guarded by AUTH_TEST_PAGE_ENABLED flag.
+   * Returns public client auth configuration.
    */
   router.get('/config', (_req: Request, res: Response) => {
-    if (!env.AUTH_TEST_PAGE_ENABLED && env.NODE_ENV === 'production') {
-      throw new NotFoundError('Auth test configuration');
-    }
-
     res.status(200).json({
       success: true,
       data: {
-        apiKey: env.FIREBASE_CLIENT_API_KEY || '',
-        authDomain: env.FIREBASE_CLIENT_AUTH_DOMAIN || '',
-        projectId:
-          env.FIREBASE_CLIENT_PROJECT_ID ||
-          env.FIREBASE_PROJECT_ID ||
-          env.GOOGLE_CLOUD_PROJECT ||
-          '',
-        storageBucket: env.FIREBASE_CLIENT_STORAGE_BUCKET || '',
-        messagingSenderId: env.FIREBASE_CLIENT_MESSAGING_SENDER_ID || '',
-        appId: env.FIREBASE_CLIENT_APP_ID || '',
+        authMode: 'jwt',
+        googleClientId: env.GOOGLE_CLIENT_ID || '',
       },
     });
   });

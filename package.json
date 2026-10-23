@@ -4,6 +4,8 @@
   "private": true,
   "description": "CampusConnect - Student campus-issue reporting and resolution platform",
   "scripts": {
+    "postinstall": "npm --prefix app install && npm --prefix frontend install",
+    "install:all": "npm --prefix app install && npm --prefix frontend install",
     "build": "npm --prefix frontend run build && npm --prefix app run build",
     "build:app": "npm --prefix app run build",
     "build:frontend": "npm --prefix frontend run build",
