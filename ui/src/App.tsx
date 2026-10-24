@@ -886,9 +886,9 @@ function Login({
   const [campusCode, setCampusCode] = useState(() => {
     if (typeof window !== 'undefined') {
       const urlCode = new URLSearchParams(window.location.search).get('campus');
-      return urlCode ? urlCode.toUpperCase() : '';
+      if (urlCode) return urlCode.toUpperCase();
     }
-    return '';
+    return 'CAMPUS-2026';
   });
   const [campusConfig, setCampusConfig] = useState<CampusConfig | null>(null);
 
@@ -914,9 +914,8 @@ function Login({
     api.campusConfig()
       .then((res) => {
         setCampusConfig(res.config);
-        if (res.config.code) {
-          setCampusCode((prev) => prev || res.config.code);
-        }
+        const code = res.config?.code || 'CAMPUS-2026';
+        setCampusCode((prev) => prev || code);
       })
       .catch(() => {});
 
@@ -930,7 +929,9 @@ function Login({
     setSubmitting(true);
     setError(null);
     try {
-      const codeToSend = signinRole === 'admin' ? undefined : campusCode;
+      const codeToSend = signinRole === 'admin'
+        ? undefined
+        : (campusCode.trim() || campusConfig?.code || 'CAMPUS-2026').toUpperCase();
       onLogin(await api.login(email, password, codeToSend));
     } catch (reason) {
       setError(errorText(reason));
@@ -952,7 +953,9 @@ function Login({
     setSubmitting(true);
     setError(null);
     try {
-      const codeToSend = signupRole === 'admin' ? undefined : campusCode;
+      const codeToSend = signupRole === 'admin'
+        ? undefined
+        : (campusCode.trim() || campusConfig?.code || 'CAMPUS-2026').toUpperCase();
       const session = await api.signup({
         name: signupName,
         email: signupEmail,
@@ -1194,27 +1197,6 @@ function Login({
               <p>Enroll as a new student, facilities staff, or university administrator.</p>
             </div>
 
-            {/* Campus Code Requirement - Only asked for Student and Staff, NOT asked for Admin */}
-            {signupRole !== 'admin' && (
-              <label>
-                Campus Institutional Access Code
-                <div className="campus-code-input-wrap">
-                  <Symbol name="domain_verification" />
-                  <input
-                    name="campusCode"
-                    type="text"
-                    value={campusCode}
-                    onChange={(event) => setCampusCode(event.target.value.toUpperCase())}
-                    placeholder={campusConfig?.code || 'CAMPUS-2026'}
-                    required
-                  />
-                  {campusCode.trim().toUpperCase() === (campusConfig?.code || 'CAMPUS-2026').toUpperCase() && (
-                    <span className="code-valid-pill"><Symbol name="check" /> Valid</span>
-                  )}
-                </div>
-              </label>
-            )}
-
             <label>
               Full Name
               <input
@@ -1250,6 +1232,27 @@ function Login({
                 <option value="admin">Executive Administrator (SLA & Department Oversight)</option>
               </select>
             </label>
+
+            {/* Campus Code Requirement - Only asked for Student and Staff, NOT asked for Admin */}
+            {signupRole !== 'admin' && (
+              <label>
+                Campus Institutional Access Code
+                <div className="campus-code-input-wrap">
+                  <Symbol name="domain_verification" />
+                  <input
+                    name="campusCode"
+                    type="text"
+                    value={campusCode}
+                    onChange={(event) => setCampusCode(event.target.value.toUpperCase())}
+                    placeholder={campusConfig?.code || 'CAMPUS-2026'}
+                    required
+                  />
+                  {campusCode.trim().toUpperCase() === (campusConfig?.code || 'CAMPUS-2026').toUpperCase() && (
+                    <span className="code-valid-pill"><Symbol name="check" /> Valid</span>
+                  )}
+                </div>
+              </label>
+            )}
 
             <label>
               Master Password
