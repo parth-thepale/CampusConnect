@@ -1,6 +1,8 @@
 import type { AiDraft, AiTriage, Category, DuplicateCandidate, ImageProblemDetection, Metrics, OpsPulse, ProblemAnalytics, Role, SessionUser, Ticket, TicketStatus } from './types';
 
 const sessionKey = 'campusconnect-session';
+const envBase = (import.meta as unknown as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE;
+const API_BASE = envBase ?? (typeof window !== 'undefined' && window.location.hostname.includes('web.app') ? 'https://dry-dingos-bow.loca.lt' : '');
 
 export interface StoredSession { token: string; user: SessionUser }
 
@@ -17,9 +19,15 @@ class ApiError extends Error { constructor(message: string) { super(message); th
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const session = getStoredSession();
-  const response = await fetch(path, {
+  const targetUrl = path.startsWith('http') ? path : `${API_BASE}${path}`;
+  const response = await fetch(targetUrl, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.token}` } : {}), ...(init.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      'Bypass-Tunnel-Reminder': 'true',
+      ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
+      ...(init.headers ?? {}),
+    },
   });
   if (response.status === 204) return undefined as T;
   const payload = await response.json() as T & { error?: { message?: string } };
