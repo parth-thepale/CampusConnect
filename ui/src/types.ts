@@ -12,6 +12,9 @@ export interface SessionUser {
   email: string;
   role: Role;
   isDemo?: boolean;
+  faceData?: string;
+  memberId?: string;
+  hasFaceEnrolled?: boolean;
 }
 
 export interface TicketEvent {

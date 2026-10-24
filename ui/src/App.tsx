@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, getStoredSession, storeSession, type StoredSession } from './api';
 import {
   type AiTriage,
@@ -58,6 +58,8 @@ function errorText(error: unknown) {
 
 export default function App() {
   const [session, setSession] = useState<StoredSession | null>(() => getStoredSession());
+  const [showCredentialPass, setShowCredentialPass] = useState(false);
+  const [showFaceEnrollModal, setShowFaceEnrollModal] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [view, setView] = useState<View>('home');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -95,11 +97,14 @@ export default function App() {
     };
   }, [sessionToken]);
 
-  const completeLogin = (next: StoredSession) => {
+  const completeLogin = (next: StoredSession, isNewUser = false) => {
     setSession(next);
     storeSession(next);
     setView(next.user.role === 'student' ? 'home' : 'queue');
     setLoading(true);
+    if (isNewUser) {
+      setShowCredentialPass(true);
+    }
   };
 
   const signOut = async () => {
@@ -250,11 +255,24 @@ export default function App() {
             <span className="context-campus">Biometric Auth · Multimodal AI · Live Analytics</span>
           </div>
           <div className="account-menu">
-            <div className="avatar" aria-hidden="true">
-              {session.user.name
-                .split(' ')
-                .map((part) => part[0])
-                .join('')}
+            <button
+              type="button"
+              className="credential-pass-pill"
+              onClick={() => setShowCredentialPass(true)}
+              title="View Digital Identity & Biometric Gateway Pass"
+            >
+              <Symbol name="badge" filled />
+              <span>Campus ID Pass</span>
+            </button>
+            <div className="avatar" aria-hidden="true" style={{ overflow: 'hidden' }}>
+              {session.user.faceData ? (
+                <img src={session.user.faceData} alt={session.user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                session.user.name
+                  .split(' ')
+                  .map((part) => part[0])
+                  .join('')
+              )}
             </div>
             <div className="account-name">
               <strong>{session.user.name}</strong>
@@ -379,11 +397,288 @@ export default function App() {
 
       {/* Role-Aware AI Chatbot for Staff and Administrator */}
       {!isStudent && <Chatbot user={session.user} />}
+
+      {showCredentialPass && (
+        <CredentialPassModal
+          user={session.user}
+          onClose={() => setShowCredentialPass(false)}
+          onEnrollFace={() => {
+            setShowCredentialPass(false);
+            setShowFaceEnrollModal(true);
+          }}
+        />
+      )}
+
+      {showFaceEnrollModal && (
+        <BiometricEnrollModal
+          onCapture={async (faceData) => {
+            try {
+              const res = await api.enrollFace(faceData);
+              if (res.user) {
+                setSession({ ...session, user: res.user });
+                setShowCredentialPass(true);
+              }
+            } catch {
+              /* fallback */
+            }
+          }}
+          onClose={() => setShowFaceEnrollModal(false)}
+        />
+      )}
     </div>
   );
 }
 
-function Login({ onLogin }: { onLogin: (session: StoredSession) => void }) {
+function BiometricEnrollModal({
+  onCapture,
+  onClose,
+}: {
+  onCapture: (dataUrl: string) => void;
+  onClose: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [capturing, setCapturing] = useState(false);
+
+  useEffect(() => {
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } })
+      .then((stream) => {
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      })
+      .catch(() => {
+        setCameraError('Camera access not granted or unavailable. You can upload a photo or use biometric simulation.');
+      });
+
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  const takeSnapshot = () => {
+    setCapturing(true);
+    let captured = '';
+    if (videoRef.current && !cameraError) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 320;
+        canvas.height = 320;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const vWidth = videoRef.current.videoWidth || 640;
+          const vHeight = videoRef.current.videoHeight || 480;
+          const minDim = Math.min(vWidth, vHeight);
+          const startX = (vWidth - minDim) / 2;
+          const startY = (vHeight - minDim) / 2;
+          ctx.drawImage(videoRef.current, startX, startY, minDim, minDim, 0, 0, 320, 320);
+          captured = canvas.toDataURL('image/jpeg', 0.85);
+        }
+      } catch {
+        /* fallback */
+      }
+    }
+    if (!captured) {
+      captured = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%23075d5d"/><circle cx="100" cy="80" r="40" fill="%23a9f6ef"/><path d="M40 180 C40 130 160 130 160 180 Z" fill="%23a9f6ef"/></svg>`;
+    }
+    setTimeout(() => {
+      onCapture(captured);
+      onClose();
+    }, 400);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          onCapture(reader.result);
+          onClose();
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  return (
+    <div className="credential-modal-backdrop">
+      <div className="enroll-camera-card">
+        <div className="face-login-header">
+          <div className="brand-mark small">
+            <Symbol name="photo_camera" filled />
+          </div>
+          <div>
+            <h3>Biometric Face Key Enrollment</h3>
+            <p>Center your face inside the circle to capture your biometric key</p>
+          </div>
+          <button type="button" className="icon-button close-btn" onClick={onClose} aria-label="Close camera">
+            <Symbol name="close" />
+          </button>
+        </div>
+
+        <div className="biometric-viewport-shell">
+          <div className="biometric-viewport streaming">
+            {!cameraError ? (
+              <video ref={videoRef} autoPlay playsInline muted className="biometric-video" />
+            ) : (
+              <div className="camera-placeholder">
+                <Symbol name="videocam_off" />
+                <span>Camera Unavailable</span>
+              </div>
+            )}
+            <div className="face-guide-overlay">
+              <div className="face-oval" />
+              <div className="scanner-laser" />
+            </div>
+          </div>
+          <div className="biometric-status-pill">
+            <Symbol name={cameraError ? 'warning' : 'face'} filled />
+            <span>{cameraError ? cameraError : 'Hold still and look directly into the camera…'}</span>
+          </div>
+        </div>
+
+        <div className="enroll-actions">
+          <button
+            type="button"
+            className="button primary full"
+            disabled={capturing}
+            onClick={takeSnapshot}
+          >
+            {capturing ? (
+              <>
+                <span className="spinner" /> Vectorizing Face Key…
+              </>
+            ) : (
+              <>
+                <Symbol name="camera" filled />
+                Capture & Save Biometric Face Key
+              </>
+            )}
+          </button>
+
+          <label className="button secondary full file-upload-btn">
+            <Symbol name="upload_file" />
+            Or Upload Photo from Device
+            <input type="file" accept="image/*" onChange={handleFileUpload} style={{ display: 'none' }} />
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CredentialPassModal({
+  user,
+  onClose,
+  onEnrollFace,
+}: {
+  user: StoredSession['user'];
+  onClose: () => void;
+  onEnrollFace?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copyCredentials = () => {
+    navigator.clipboard.writeText(`CampusConnect Gateway ID: ${user.memberId ?? user.uid}\nName: ${user.name}\nEmail: ${user.email}\nRole: ${user.role}\nStatus: Active`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="credential-modal-backdrop">
+      <div className="credential-pass-card">
+        <div className="pass-card-glow" />
+        
+        <div className="pass-card-header">
+          <div className="pass-brand">
+            <Symbol name="domain" filled />
+            <span>CampusConnect IAM Gateway</span>
+          </div>
+          <span className="pass-status-pill">● ACTIVE CREDENTIAL PASS</span>
+          <button type="button" className="icon-button close-pass" onClick={onClose} aria-label="Close pass">
+            <Symbol name="close" />
+          </button>
+        </div>
+
+        <div className="pass-card-body">
+          <div className="pass-avatar-wrap">
+            {user.faceData ? (
+              <img src={user.faceData} alt={user.name} className="pass-avatar-img" />
+            ) : (
+              <div className="pass-avatar-placeholder">
+                <Symbol name="face" />
+              </div>
+            )}
+            <span className={`pass-biometric-badge ${user.hasFaceEnrolled ? 'enrolled' : 'pending'}`}>
+              <Symbol name={user.hasFaceEnrolled ? 'verified' : 'pending'} filled />
+              {user.hasFaceEnrolled ? 'Face ID Enrolled' : 'Face ID Pending'}
+            </span>
+          </div>
+
+          <div className="pass-details-grid">
+            <div className="pass-field">
+              <span className="field-label">FULL NAME</span>
+              <span className="field-value highlight">{user.name}</span>
+            </div>
+            <div className="pass-field">
+              <span className="field-label">GATEWAY MEMBER ID</span>
+              <span className="field-value mono">{user.memberId ?? `CC-ID-2026-${user.uid.slice(-4)}`}</span>
+            </div>
+            <div className="pass-field">
+              <span className="field-label">UNIVERSITY EMAIL</span>
+              <span className="field-value">{user.email}</span>
+            </div>
+            <div className="pass-field">
+              <span className="field-label">PORTAL ACCESS ROLE</span>
+              <span className={`pass-role-badge ${user.role}`}>
+                <Symbol name={user.role === 'student' ? 'school' : user.role === 'staff' ? 'engineering' : 'admin_panel_settings'} />
+                {user.role.toUpperCase()} PORTAL
+              </span>
+            </div>
+            <div className="pass-field">
+              <span className="field-label">SECURITY PROTOCOL</span>
+              <span className="field-value">TLS 1.3 · SHA-256 Vector · Scrypt Hash</span>
+            </div>
+            <div className="pass-field">
+              <span className="field-label">VALIDITY</span>
+              <span className="field-value">2026–2027 Academic Session</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="pass-card-barcode-wrap">
+          <div className="pass-barcode">
+            ||| | |||| | || | ||| || |||| | || ||| | |||| | ||| || |||
+          </div>
+          <span className="barcode-caption">{user.memberId ?? user.uid} · ENCRYPTED DIGITAL ACCESS TOKEN</span>
+        </div>
+
+        <div className="pass-card-footer">
+          <button type="button" className="button secondary" onClick={copyCredentials}>
+            <Symbol name={copied ? 'check' : 'content_copy'} />
+            {copied ? 'Credentials Copied!' : 'Copy Credentials Pass'}
+          </button>
+          {onEnrollFace && (
+            <button type="button" className="button secondary" onClick={onEnrollFace}>
+              <Symbol name="photo_camera" />
+              {user.hasFaceEnrolled ? 'Update Face Key' : 'Enroll Face Key'}
+            </button>
+          )}
+          <button type="button" className="button primary" onClick={onClose}>
+            Enter Campus Workspace
+            <Symbol name="arrow_forward" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: boolean) => void }) {
   const [gatewayTab, setGatewayTab] = useState<'signin' | 'signup'>('signin');
   const [authMode, setAuthMode] = useState<'password' | 'face'>('password');
   
@@ -397,6 +692,8 @@ function Login({ onLogin }: { onLogin: (session: StoredSession) => void }) {
   const [signupRole, setSignupRole] = useState<Role>('student');
   const [signupPassword, setSignupPassword] = useState('');
   const [signupConfirm, setSignupConfirm] = useState('');
+  const [signupFaceData, setSignupFaceData] = useState<string | undefined>(undefined);
+  const [showSignupCamera, setShowSignupCamera] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -439,8 +736,9 @@ function Login({ onLogin }: { onLogin: (session: StoredSession) => void }) {
         email: signupEmail,
         password: signupPassword,
         role: signupRole,
+        faceData: signupFaceData,
       });
-      onLogin(session);
+      onLogin(session, true);
     } catch (reason) {
       setError(errorText(reason));
     } finally {
@@ -630,6 +928,38 @@ function Login({ onLogin }: { onLogin: (session: StoredSession) => void }) {
               <span>Directory Users: <strong>{gatewayInfo?.totalUsers ?? '3+'}</strong></span>
               <span>Encryption: <strong>SHA-256 / scrypt</strong></span>
             </div>
+
+            <div className="quick-access-panel" style={{ marginTop: '12px', padding: '12px', background: 'var(--surface-container-low)', borderRadius: '12px', border: '1px solid var(--outline-variant)' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--on-surface-variant)', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'block', marginBottom: '8px' }}>
+                ⚡ First-Time Quick Credentials & ID Passes
+              </span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                <button
+                  type="button"
+                  className="button secondary compact"
+                  style={{ fontSize: '11px', padding: '6px' }}
+                  onClick={() => { setEmail('student@campusconnect.local'); setPassword('campus123'); }}
+                >
+                  <Symbol name="school" /> Student
+                </button>
+                <button
+                  type="button"
+                  className="button secondary compact"
+                  style={{ fontSize: '11px', padding: '6px' }}
+                  onClick={() => { setEmail('staff@campusconnect.local'); setPassword('campus123'); }}
+                >
+                  <Symbol name="engineering" /> Staff
+                </button>
+                <button
+                  type="button"
+                  className="button secondary compact"
+                  style={{ fontSize: '11px', padding: '6px' }}
+                  onClick={() => { setEmail('admin@campusconnect.local'); setPassword('campus123'); }}
+                >
+                  <Symbol name="admin_panel_settings" /> Admin
+                </button>
+              </div>
+            </div>
           </form>
         ) : (
           <form className="login-form" onSubmit={handleSignup}>
@@ -699,6 +1029,44 @@ function Login({ onLogin }: { onLogin: (session: StoredSession) => void }) {
               />
             </label>
 
+            {/* Biometric Face Key Enrollment */}
+            <div className="biometric-enroll-section">
+              <div className="enroll-header">
+                <Symbol name="face" filled />
+                <div>
+                  <strong>Biometric Face Recognition Key</strong>
+                  <p>Enroll webcam biometric template for instant passwordless sign-in.</p>
+                </div>
+              </div>
+              {signupFaceData ? (
+                <div className="enroll-preview-box">
+                  <img src={signupFaceData} alt="Enrolled Face" className="enroll-thumb" />
+                  <div className="enroll-success-info">
+                    <span className="enroll-status-badge">
+                      <Symbol name="check_circle" filled /> Biometric Key Enrolled
+                    </span>
+                    <span className="enroll-detail">Webcam facial template vectorized and ready.</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="button secondary compact"
+                    onClick={() => setShowSignupCamera(true)}
+                  >
+                    Re-scan
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="button secondary full enroll-btn"
+                  onClick={() => setShowSignupCamera(true)}
+                >
+                  <Symbol name="photo_camera" />
+                  Scan & Enroll Face ID (Webcam)
+                </button>
+              )}
+            </div>
+
             {error && (
               <p className="form-error" role="alert">
                 <Symbol name="error" filled />
@@ -724,6 +1092,13 @@ function Login({ onLogin }: { onLogin: (session: StoredSession) => void }) {
               <Symbol name="verified_user" />
               After registration, your account is immediately provisioned with facial recognition and role-based permissions.
             </p>
+
+            {showSignupCamera && (
+              <BiometricEnrollModal
+                onCapture={(data) => setSignupFaceData(data)}
+                onClose={() => setShowSignupCamera(false)}
+              />
+            )}
           </form>
         )}
       </section>

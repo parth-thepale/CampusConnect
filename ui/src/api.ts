@@ -55,15 +55,17 @@ interface LocalUser {
   email: string;
   role: Role;
   password: string;
+  faceData?: string;
+  memberId?: string;
 }
 
 const DEFAULT_USERS: LocalUser[] = [
-  { id: 'usr-student-ava', name: 'Ava Patel', email: 'student@campusconnect.local', role: 'student', password: 'campus123' },
-  { id: 'usr-student-edu', name: 'Ava Patel', email: 'student@campusconnect.edu', role: 'student', password: 'student123' },
-  { id: 'usr-staff-aarav', name: 'Aarav Mehta', email: 'staff@campusconnect.local', role: 'staff', password: 'campus123' },
-  { id: 'usr-staff-edu', name: 'Aarav Mehta', email: 'staff@campusconnect.edu', role: 'staff', password: 'staff123' },
-  { id: 'usr-admin-nisha', name: 'Nisha Rao', email: 'admin@campusconnect.local', role: 'admin', password: 'campus123' },
-  { id: 'usr-admin-edu', name: 'Nisha Rao', email: 'admin@campusconnect.edu', role: 'admin', password: 'admin123' },
+  { id: 'usr-student-ava', name: 'Ava Patel', email: 'student@campusconnect.local', role: 'student', password: 'campus123', memberId: 'CC-ID-2026-4401' },
+  { id: 'usr-student-edu', name: 'Ava Patel', email: 'student@campusconnect.edu', role: 'student', password: 'student123', memberId: 'CC-ID-2026-4402' },
+  { id: 'usr-staff-aarav', name: 'Aarav Mehta', email: 'staff@campusconnect.local', role: 'staff', password: 'campus123', memberId: 'CC-ID-2026-8801' },
+  { id: 'usr-staff-edu', name: 'Aarav Mehta', email: 'staff@campusconnect.edu', role: 'staff', password: 'staff123', memberId: 'CC-ID-2026-8802' },
+  { id: 'usr-admin-nisha', name: 'Nisha Rao', email: 'admin@campusconnect.local', role: 'admin', password: 'campus123', memberId: 'CC-ID-2026-9901' },
+  { id: 'usr-admin-edu', name: 'Nisha Rao', email: 'admin@campusconnect.edu', role: 'admin', password: 'admin123', memberId: 'CC-ID-2026-9902' },
 ];
 
 function getStoredUsers(): LocalUser[] {
@@ -221,7 +223,16 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
     const token = `token-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     return {
       token,
-      user: { uid: found.id, name: found.name, email: found.email, role: found.role, isDemo: true },
+      user: {
+        uid: found.id,
+        name: found.name,
+        email: found.email,
+        role: found.role,
+        isDemo: found.id.startsWith('usr-'),
+        faceData: found.faceData,
+        memberId: found.memberId ?? `CC-ID-2026-${found.id.slice(-4)}`,
+        hasFaceEnrolled: Boolean(found.faceData) || found.id.startsWith('usr-'),
+      },
     } as T;
   }
 
@@ -231,22 +242,35 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
     const name = String(body.name ?? '').trim();
     const role = (body.role as Role) ?? 'student';
     const password = String(body.password ?? '').trim();
+    const faceData = body.faceData ? String(body.faceData) : undefined;
     const users = getStoredUsers();
     if (users.some((u) => u.email.toLowerCase() === email)) {
       throw new ApiError('An account with this email address already exists in the campus directory.');
     }
+    const memberId = `CC-ID-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const newUser: LocalUser = {
       id: `usr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: name || 'Campus User',
       email,
       role,
       password: password || 'campus123',
+      faceData,
+      memberId,
     };
     saveUser(newUser);
     const token = `token-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     return {
       token,
-      user: { uid: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role, isDemo: false },
+      user: {
+        uid: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        isDemo: false,
+        faceData,
+        memberId,
+        hasFaceEnrolled: Boolean(faceData),
+      },
       message: 'Account successfully registered in campus gateway.',
     } as T;
   }
@@ -254,14 +278,70 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
   // 4. Authentication: Face Login
   if (path === '/api/auth/face-login' && method === 'POST') {
     const identifier = String(body.identifier ?? '').toLowerCase();
+    const faceData = body.faceData ? String(body.faceData) : undefined;
     const users = getStoredUsers();
-    const found = users.find((u) => u.email.toLowerCase().includes(identifier) || u.role.toLowerCase() === identifier) ?? users[0];
+    let found = users.find((u) => u.email.toLowerCase() === identifier || u.id === identifier || u.memberId?.toLowerCase() === identifier);
+    if (!found) {
+      found = users.find((u) => u.email.toLowerCase().includes(identifier) || u.role.toLowerCase() === identifier) ?? users[0];
+    }
+    if (faceData && !found.faceData) {
+      found.faceData = faceData;
+      localStorage.setItem(usersStorageKey, JSON.stringify(users));
+    }
     const token = `token-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     return {
       token,
-      user: { uid: found.id, name: found.name, email: found.email, role: found.role, isDemo: true },
+      user: {
+        uid: found.id,
+        name: found.name,
+        email: found.email,
+        role: found.role,
+        isDemo: found.id.startsWith('usr-'),
+        faceData: found.faceData ?? faceData,
+        memberId: found.memberId ?? `CC-ID-2026-${found.id.slice(-4)}`,
+        hasFaceEnrolled: true,
+      },
       method: 'facial_recognition',
     } as T;
+  }
+
+  // 4b. Enrolled Users List
+  if (path === '/api/auth/enrolled-users' && method === 'GET') {
+    const users = getStoredUsers();
+    return {
+      users: users.map((u) => ({
+        uid: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        memberId: u.memberId ?? `CC-ID-2026-${u.id.slice(-4)}`,
+        hasFaceEnrolled: Boolean(u.faceData) || u.id.startsWith('usr-'),
+        faceData: u.faceData,
+      })),
+    } as T;
+  }
+
+  // 4c. Enroll Face Biometric Key
+  if (path === '/api/auth/enroll-face' && method === 'POST') {
+    const faceData = String(body.faceData ?? '');
+    const users = getStoredUsers();
+    const currUser = session?.user;
+    if (currUser) {
+      const match = users.find((u) => u.id === currUser.uid || u.email.toLowerCase() === currUser.email.toLowerCase());
+      if (match) {
+        match.faceData = faceData;
+        localStorage.setItem(usersStorageKey, JSON.stringify(users));
+      }
+      const updatedUser = {
+        ...currUser,
+        faceData,
+        hasFaceEnrolled: true,
+      };
+      const updatedSession = { ...session, user: updatedUser };
+      storeSession(updatedSession);
+      return { user: updatedUser, message: 'Biometric face template enrolled successfully.' } as T;
+    }
+    return { message: 'Biometric saved.' } as T;
   }
 
   // 5. Authentication: Me
@@ -763,6 +843,8 @@ export const api = {
   analytics: () => request<{ analytics: ProblemAnalytics }>('/api/analytics'),
   operationsPulse: () => request<{ pulse: OpsPulse; source: 'gemini' | 'local' }>('/api/ai/operations-pulse'),
   routingRules: () => request<{ rules: { id: string; category: Category; department: string; evidence: string; isDemo: number; active: number }[] }>('/api/routing-rules'),
+  enrolledUsers: () => request<{ users: { uid: string; name: string; email: string; role: Role; memberId: string; hasFaceEnrolled: boolean; faceData?: string }[] }>('/api/auth/enrolled-users'),
+  enrollFace: (faceData: string) => request<{ user: SessionUser; message: string }>('/api/auth/enroll-face', { method: 'POST', body: JSON.stringify({ faceData }) }),
 };
 
 export const accountExamples: { label: string; email: string; password: string; role: Role }[] = [

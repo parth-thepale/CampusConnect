@@ -2650,3 +2650,399 @@ textarea { min-height: 148px; resize: vertical; }
   }
 }
 
+/* ========================================================
+   BIOMETRIC ENROLLMENT & DIGITAL CREDENTIAL PASS
+   ======================================================== */
+.credential-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 9999;
+  animation: fadeIn 180ms ease;
+}
+
+.credential-pass-card {
+  position: relative;
+  width: 100%;
+  max-width: 580px;
+  background: #092c2c;
+  color: #f8fafc;
+  border-radius: 24px;
+  border: 1px solid rgba(169, 246, 239, 0.3);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pass-card-glow {
+  position: absolute;
+  top: -80px;
+  right: -80px;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(169, 246, 239, 0.25) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.pass-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding-bottom: 14px;
+}
+
+.pass-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  color: #a9f6ef;
+}
+
+.pass-status-pill {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(20, 108, 46, 0.4);
+  color: #86efac;
+  border: 1px solid rgba(134, 239, 172, 0.4);
+}
+
+.close-pass {
+  color: #94a3b8;
+}
+.close-pass:hover {
+  color: white;
+}
+
+.pass-card-body {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 24px;
+  align-items: center;
+}
+
+@media (max-width: 600px) {
+  .pass-card-body {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+}
+
+.pass-avatar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.pass-avatar-img {
+  width: 130px;
+  height: 130px;
+  border-radius: 20px;
+  object-fit: cover;
+  border: 3px solid #a9f6ef;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.pass-avatar-placeholder {
+  width: 130px;
+  height: 130px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px dashed rgba(169, 246, 239, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a9f6ef;
+}
+.pass-avatar-placeholder .symbol {
+  font-size: 64px;
+}
+
+.pass-biometric-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+.pass-biometric-badge.enrolled {
+  background: rgba(20, 108, 46, 0.5);
+  color: #86efac;
+}
+.pass-biometric-badge.pending {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fde047;
+}
+
+.pass-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+.pass-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pass-field .field-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #94a3b8;
+}
+
+.pass-field .field-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.pass-field .field-value.highlight {
+  font-size: 16px;
+  color: #ffffff;
+}
+
+.pass-field .field-value.mono {
+  font-family: monospace;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: #a9f6ef;
+}
+
+.pass-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 6px;
+  width: fit-content;
+  background: rgba(169, 246, 239, 0.15);
+  color: #a9f6ef;
+}
+
+.pass-card-barcode-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pass-barcode {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 16px;
+  letter-spacing: 3px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 900;
+  user-select: none;
+}
+
+.barcode-caption {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #64748b;
+}
+
+.pass-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* Biometric Enroll in Signup */
+.biometric-enroll-section {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-sm, 12px);
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+}
+
+.enroll-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #0f766e;
+}
+.enroll-header .symbol {
+  font-size: 24px;
+  color: #0d9488;
+}
+.enroll-header strong {
+  display: block;
+  font-size: 13px;
+  color: #115e59;
+}
+.enroll-header p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #0f766e;
+}
+
+.enroll-preview-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #99f6e4;
+}
+
+.enroll-thumb {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #0d9488;
+}
+
+.enroll-success-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.enroll-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #047857;
+}
+
+.enroll-detail {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.enroll-camera-card {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.enroll-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.file-upload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+/* Face Login dynamic chips */
+.profile-selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.profile-sublabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.profile-chip {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px !important;
+  border-radius: 999px !important;
+}
+
+.chip-avatar-img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--primary);
+}
+
+.chip-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.chip-role {
+  font-size: 11px;
+  opacity: 0.8;
+  text-transform: capitalize;
+}
+
+.custom-identity-row {
+  margin-top: 8px;
+}
+
+.custom-identity-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+}
+
+.credential-pass-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(7, 93, 93, 0.3);
+  background: rgba(7, 93, 93, 0.08);
+  color: #075d5d;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+.credential-pass-pill:hover {
+  background: rgba(7, 93, 93, 0.16);
+  border-color: #075d5d;
+}
+

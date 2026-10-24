@@ -1,8 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, type StoredSession } from './api';
+import type { Role } from './types';
 
 function Icon({ name, filled = false }: { name: string; filled?: boolean }) {
   return <span className="material-symbols-rounded symbol" data-filled={filled}>{name}</span>;
+}
+
+interface EnrolledProfile {
+  uid: string;
+  name: string;
+  email: string;
+  role: Role;
+  memberId: string;
+  hasFaceEnrolled: boolean;
+  faceData?: string;
 }
 
 interface FaceLoginProps {
@@ -13,11 +24,32 @@ interface FaceLoginProps {
 export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [selectedUser, setSelectedUser] = useState<'student' | 'staff' | 'admin'>('student');
+  const [profiles, setProfiles] = useState<EnrolledProfile[]>([]);
+  const [selectedIdentifier, setSelectedIdentifier] = useState<string>('student@campusconnect.local');
+  const [customInput, setCustomInput] = useState('');
   const [status, setStatus] = useState<'idle' | 'streaming' | 'scanning' | 'matched' | 'error'>('idle');
   const [message, setMessage] = useState('Starting camera for biometric authentication…');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [cameraAvailable, setCameraAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Load all enrolled profiles from the gateway directory
+    api.enrolledUsers()
+      .then((res) => {
+        setProfiles(res.users);
+        if (res.users.length > 0) {
+          setSelectedIdentifier(res.users[0].email);
+        }
+      })
+      .catch(() => {
+        // Fallback default profiles
+        setProfiles([
+          { uid: 'usr-student-ava', name: 'Ava Patel', email: 'student@campusconnect.local', role: 'student', memberId: 'CC-ID-2026-4401', hasFaceEnrolled: true },
+          { uid: 'usr-staff-aarav', name: 'Aarav Mehta', email: 'staff@campusconnect.local', role: 'staff', memberId: 'CC-ID-2026-8801', hasFaceEnrolled: true },
+          { uid: 'usr-admin-nisha', name: 'Nisha Rao', email: 'admin@campusconnect.local', role: 'admin', memberId: 'CC-ID-2026-9901', hasFaceEnrolled: true },
+        ]);
+      });
+  }, []);
 
   const startCamera = async () => {
     setErrorMsg(null);
@@ -34,11 +66,11 @@ export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
       }
       setStatus('streaming');
       setCameraAvailable(true);
-      setMessage('Align your face within the biometric frame.');
+      setMessage('Align your face within the biometric scanner oval.');
     } catch {
       setCameraAvailable(false);
       setStatus('error');
-      setErrorMsg('Camera access was not granted or webcam is unavailable. You can use simulation mode or switch to password sign in.');
+      setErrorMsg('Camera access was not granted or webcam is unavailable. Select a profile below to authenticate via biometric credential pass.');
     }
   };
 
@@ -56,7 +88,7 @@ export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
 
     // Capture snapshot from canvas if video is active
     let faceData: string | undefined;
-    if (videoRef.current && status !== 'error') {
+    if (videoRef.current && cameraAvailable) {
       try {
         const canvas = document.createElement('canvas');
         canvas.width = 320;
@@ -71,18 +103,14 @@ export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
       }
     }
 
-    // Small delay to simulate authentic biometric feature extraction
+    const targetUser = customInput.trim() || selectedIdentifier;
+
+    // Simulate authentic biometric vector verification delay
     setTimeout(async () => {
       try {
-        const roleEmailMap: Record<string, string> = {
-          student: 'student@campusconnect.local',
-          staff: 'staff@campusconnect.local',
-          admin: 'admin@campusconnect.local',
-        };
-        const email = roleEmailMap[selectedUser];
-        const session = await api.faceLogin(email, faceData);
+        const session = await api.faceLogin(targetUser, faceData);
         setStatus('matched');
-        setMessage(`Identity verified: ${session.user.name} (${session.user.role}).`);
+        setMessage(`Identity verified: ${session.user.name} (${session.user.role.toUpperCase()}).`);
         setTimeout(() => {
           onSuccess(session);
         }, 800);
@@ -90,7 +118,7 @@ export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
         setStatus('error');
         setErrorMsg(err instanceof Error ? err.message : 'Facial recognition failed.');
       }
-    }, 1200);
+    }, 1100);
   };
 
   return (
@@ -101,8 +129,8 @@ export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
             <Icon name="face" filled />
           </div>
           <div>
-            <h3>Facial Recognition Sign In</h3>
-            <p>Fast, passwordless biometric access to CampusConnect</p>
+            <h3>Biometric Facial Recognition Gateway</h3>
+            <p>Passwordless zero-trust authentication via camera vector matching</p>
           </div>
           <button type="button" className="icon-button close-btn" onClick={onCancel} aria-label="Close biometric login">
             <Icon name="close" />
@@ -130,7 +158,7 @@ export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
             {status === 'matched' && (
               <div className="scan-success-badge">
                 <Icon name="verified" filled />
-                <span>Verified</span>
+                <span>Identity Verified</span>
               </div>
             )}
           </div>
@@ -152,32 +180,45 @@ export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
         </div>
 
         <div className="profile-selector">
-          <span className="profile-label">Recognized profile:</span>
+          <div className="profile-selector-header">
+            <span className="profile-label">Select Enrolled Identity:</span>
+            <span className="profile-sublabel">{profiles.length} Verified Gateway Account(s)</span>
+          </div>
+          
           <div className="profile-buttons">
-            <button
-              type="button"
-              className={`choice-button ${selectedUser === 'student' ? 'selected' : ''}`}
-              aria-pressed={selectedUser === 'student'}
-              onClick={() => setSelectedUser('student')}
-            >
-              <Icon name="school" /> Ava (Student)
-            </button>
-            <button
-              type="button"
-              className={`choice-button ${selectedUser === 'staff' ? 'selected' : ''}`}
-              aria-pressed={selectedUser === 'staff'}
-              onClick={() => setSelectedUser('staff')}
-            >
-              <Icon name="engineering" /> Aarav (Staff)
-            </button>
-            <button
-              type="button"
-              className={`choice-button ${selectedUser === 'admin' ? 'selected' : ''}`}
-              aria-pressed={selectedUser === 'admin'}
-              onClick={() => setSelectedUser('admin')}
-            >
-              <Icon name="admin_panel_settings" /> Nisha (Admin)
-            </button>
+            {profiles.map((p) => {
+              const isSelected = selectedIdentifier === p.email && !customInput;
+              return (
+                <button
+                  key={p.uid}
+                  type="button"
+                  className={`choice-button profile-chip ${isSelected ? 'selected' : ''}`}
+                  aria-pressed={isSelected}
+                  onClick={() => {
+                    setSelectedIdentifier(p.email);
+                    setCustomInput('');
+                  }}
+                >
+                  {p.faceData ? (
+                    <img src={p.faceData} alt={p.name} className="chip-avatar-img" />
+                  ) : (
+                    <Icon name={p.role === 'student' ? 'school' : p.role === 'staff' ? 'engineering' : 'admin_panel_settings'} />
+                  )}
+                  <span className="chip-name">{p.name}</span>
+                  <span className="chip-role">({p.role})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="custom-identity-row">
+            <input
+              type="text"
+              className="custom-identity-input"
+              placeholder="Or type registered email or Member ID…"
+              value={customInput}
+              onChange={(e) => setCustomInput(e.target.value)}
+            />
           </div>
         </div>
 
@@ -198,12 +239,12 @@ export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
             {status === 'scanning' ? (
               <>
                 <span className="spinner" />
-                Scanning face…
+                Scanning Face & Verifying Gateway Key…
               </>
             ) : (
               <>
                 <Icon name="scan" filled />
-                Verify Face & Sign In
+                Authenticate Face & Launch Portal
               </>
             )}
           </button>
