@@ -183,6 +183,35 @@ export function authenticateLocal(email: string, password: string): SessionUser 
   return { uid: user.id, name: user.name, email: user.email, role: user.role, isDemo: true };
 }
 
+export function registerUser(input: {
+  name: string;
+  email: string;
+  role: Role;
+  password: string;
+  faceData?: string;
+}): SessionUser {
+  type UserRow = { id: string };
+  const existing = db.prepare('SELECT id FROM users WHERE lower(email) = lower(?)').get(input.email) as UserRow | undefined;
+  if (existing) {
+    throw new Error('An account with this email address already exists in the campus directory.');
+  }
+  const id = `user-${randomBytes(6).toString('hex')}`;
+  const hash = passwordHash(input.password);
+  db.prepare('INSERT INTO users (id, name, email, role, password_hash) VALUES (?, ?, ?, ?, ?)')
+    .run(id, input.name.trim(), input.email.trim().toLowerCase(), input.role, hash);
+  return { uid: id, name: input.name.trim(), email: input.email.trim().toLowerCase(), role: input.role, isDemo: false };
+}
+
+export function gatewayStats() {
+  const totalUsers = (db.prepare('SELECT COUNT(*) AS count FROM users WHERE active = 1').get() as { count: number }).count;
+  const roles = db.prepare('SELECT role, COUNT(*) AS count FROM users WHERE active = 1 GROUP BY role').all() as { role: Role; count: number }[];
+  return {
+    status: 'online',
+    totalUsers,
+    roleBreakdown: Object.fromEntries(roles.map((r) => [r.role, r.count])),
+  };
+}
+
 export function listTickets(user: SessionUser): Ticket[] {
   const rows = user.role === 'student'
     ? db.prepare('SELECT * FROM tickets WHERE reporterId = ? ORDER BY updatedAt DESC').all(user.uid) as unknown as TicketRow[]

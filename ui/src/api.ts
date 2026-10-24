@@ -37,6 +37,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   login: (email: string, password: string) => request<StoredSession>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  signup: (data: { name: string; email: string; password: string; role: Role; faceData?: string }) => request<StoredSession>('/api/auth/signup', { method: 'POST', body: JSON.stringify(data) }),
+  gatewayStatus: () => request<{ gateway: string; status: string; protocol: string; activeSessions: number; stats: { status: string; totalUsers: number; roleBreakdown: Record<string, number> } }>('/api/auth/gateway-status'),
   faceLogin: (identifier: string, faceData?: string) => request<StoredSession>('/api/auth/face-login', { method: 'POST', body: JSON.stringify({ identifier, faceData }) }),
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
   me: () => request<{ user: SessionUser }>('/api/auth/me'),

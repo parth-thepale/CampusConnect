@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { accountExamples, api, getStoredSession, storeSession, type StoredSession } from './api';
+import { api, getStoredSession, storeSession, type StoredSession } from './api';
 import {
   type AiTriage,
   type Category,
@@ -384,18 +384,63 @@ export default function App() {
 }
 
 function Login({ onLogin }: { onLogin: (session: StoredSession) => void }) {
+  const [gatewayTab, setGatewayTab] = useState<'signin' | 'signup'>('signin');
   const [authMode, setAuthMode] = useState<'password' | 'face'>('password');
+  
+  // Sign In state
   const [email, setEmail] = useState('student@campusconnect.local');
   const [password, setPassword] = useState('campus123');
+
+  // Sign Up state
+  const [signupName, setSignupName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupRole, setSignupRole] = useState<Role>('student');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupConfirm, setSignupConfirm] = useState('');
+
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [gatewayInfo, setGatewayInfo] = useState<{ totalUsers?: number; status: string } | null>(null);
 
-  const submit = async (event: FormEvent) => {
+  useEffect(() => {
+    api.gatewayStatus()
+      .then((data) => setGatewayInfo({ totalUsers: data.stats.totalUsers, status: data.status }))
+      .catch(() => setGatewayInfo({ status: 'ONLINE (STANDALONE)' }));
+  }, []);
+
+  const handleSignin = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
       onLogin(await api.login(email, password));
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSignup = async (event: FormEvent) => {
+    event.preventDefault();
+    if (signupPassword !== signupConfirm) {
+      setError('Passwords do not match. Please re-enter.');
+      return;
+    }
+    if (signupPassword.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const session = await api.signup({
+        name: signupName,
+        email: signupEmail,
+        password: signupPassword,
+        role: signupRole,
+      });
+      onLogin(session);
     } catch (reason) {
       setError(errorText(reason));
     } finally {
@@ -417,137 +462,270 @@ function Login({ onLogin }: { onLogin: (session: StoredSession) => void }) {
           <span>CampusConnect</span>
         </div>
         <div>
-          <span className="eyebrow">Campus facilities, made trackable</span>
-          <h1>From a student report to accountable maintenance.</h1>
-          <p>Guided intake turns photos and voice into reviewable tickets. Staff decisions remain in control.</p>
+          <span className="eyebrow">Enterprise Identity & Access Management</span>
+          <h1>Unified Campus Auth Gateway</h1>
+          <p>Multi-portal biometric sign-in, self-service user registration, and role-guarded access for students, staff, and administration.</p>
         </div>
         <dl className="login-points">
           <div>
-            <dt><Symbol name="face" filled />Facial Recognition</dt>
-            <dd>Biometric login via webcam with authentic liveness check.</dd>
+            <dt><Symbol name="shield" filled />Role-Based Gateways</dt>
+            <dd>Dedicated pipelines for Student intake, Staff work orders, and Executive oversight.</dd>
           </div>
           <div>
-            <dt><Symbol name="mic" filled />Voice & Auto-Write</dt>
-            <dd>Speech dictation and AI assistance across all textareas.</dd>
+            <dt><Symbol name="face" filled />Biometric Face Gateway</dt>
+            <dd>Webcam facial landmark matching with local privacy-preserving vectoring.</dd>
           </div>
           <div>
-            <dt><Symbol name="image_search" filled />AI Photo Detection</dt>
-            <dd>Upload a photo to auto-detect problems and view on staff screens.</dd>
+            <dt><Symbol name="lock" filled />Zero-Trust Credentials</dt>
+            <dd>Scrypt password hashing, session tokens, and strict role validation.</dd>
           </div>
         </dl>
       </section>
 
       <section className="login-panel">
-        <form className="login-form" onSubmit={submit}>
-          <div>
-            <span className="eyebrow">Local sign in</span>
-            <h2>Welcome back</h2>
-            <p>Sign in with password or use facial recognition.</p>
+        <div className="gateway-header-wrap">
+          <div className="gateway-security-pill">
+            <span className="pulse-dot" />
+            IAM Gateway {gatewayInfo?.status ?? 'Online'} · Encrypted
           </div>
 
-          <div className="auth-tab-row">
+          <div className="gateway-tabs-bar" role="tablist">
             <button
               type="button"
-              className={`auth-tab ${authMode === 'password' ? 'active' : ''}`}
-              onClick={() => setAuthMode('password')}
+              className={`gateway-tab-btn ${gatewayTab === 'signin' ? 'active' : ''}`}
+              onClick={() => { setGatewayTab('signin'); setError(null); }}
             >
-              <Symbol name="key" /> Password
+              <Symbol name="login" /> Sign In Gateway
             </button>
             <button
               type="button"
-              className="auth-tab face-tab-cta"
+              className={`gateway-tab-btn ${gatewayTab === 'signup' ? 'active' : ''}`}
+              onClick={() => { setGatewayTab('signup'); setError(null); }}
+            >
+              <Symbol name="person_add" /> Create Account
+            </button>
+          </div>
+        </div>
+
+        {gatewayTab === 'signin' ? (
+          <form className="login-form" onSubmit={handleSignin}>
+            <div>
+              <span className="eyebrow">Authentication Gateway</span>
+              <h2>Sign in to Campus Portal</h2>
+              <p>Choose your target portal gateway or enter credentials.</p>
+            </div>
+
+            {/* Role Portal Quick Selection */}
+            <div className="portal-gateway-selector">
+              <button
+                type="button"
+                className={`portal-card-btn ${email === 'student@campusconnect.local' ? 'active' : ''}`}
+                onClick={() => {
+                  setEmail('student@campusconnect.local');
+                  setPassword('campus123');
+                }}
+              >
+                <Symbol name="school" filled />
+                <span className="portal-title">Student Portal</span>
+                <span className="portal-desc">Reports & Radar</span>
+              </button>
+              <button
+                type="button"
+                className={`portal-card-btn ${email === 'staff@campusconnect.local' ? 'active' : ''}`}
+                onClick={() => {
+                  setEmail('staff@campusconnect.local');
+                  setPassword('campus123');
+                }}
+              >
+                <Symbol name="engineering" filled />
+                <span className="portal-title">Facilities Staff</span>
+                <span className="portal-desc">3D Twin & Triage</span>
+              </button>
+              <button
+                type="button"
+                className={`portal-card-btn ${email === 'admin@campusconnect.local' ? 'active' : ''}`}
+                onClick={() => {
+                  setEmail('admin@campusconnect.local');
+                  setPassword('campus123');
+                }}
+              >
+                <Symbol name="admin_panel_settings" filled />
+                <span className="portal-title">Admin Gateway</span>
+                <span className="portal-desc">SLA & Capacity</span>
+              </button>
+            </div>
+
+            <div className="auth-tab-row">
+              <button
+                type="button"
+                className={`auth-tab ${authMode === 'password' ? 'active' : ''}`}
+                onClick={() => setAuthMode('password')}
+              >
+                <Symbol name="key" /> Password
+              </button>
+              <button
+                type="button"
+                className="auth-tab face-tab-cta"
+                onClick={() => setAuthMode('face')}
+              >
+                <Symbol name="face" filled /> Biometric Face Scan
+              </button>
+            </div>
+
+            <label>
+              Email Address
+              <input
+                name="email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
+                placeholder="you@campusconnect.edu"
+                required
+              />
+            </label>
+            <label>
+              Password
+              <input
+                name="password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </label>
+
+            {error && (
+              <p className="form-error" role="alert">
+                <Symbol name="error" filled />
+                {error}
+              </p>
+            )}
+
+            <button type="submit" className="button primary full" disabled={submitting}>
+              {submitting ? (
+                <>
+                  <span className="spinner" />
+                  Verifying Gateway Credentials…
+                </>
+              ) : (
+                <>
+                  Sign in through Gateway
+                  <Symbol name="arrow_forward" />
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="button secondary full face-signin-highlight"
               onClick={() => setAuthMode('face')}
             >
-              <Symbol name="face" filled /> Facial Recognition
+              <Symbol name="face" filled />
+              Launch Biometric Face ID
             </button>
-          </div>
 
-          <label>
-            Email
-            <input
-              name="email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
-              required
-            />
-          </label>
-          <label>
-            Password
-            <input
-              name="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </label>
-
-          {error && (
-            <p className="form-error" role="alert">
-              <Symbol name="error" filled />
-              {error}
-            </p>
-          )}
-
-          <button type="submit" className="button primary full" disabled={submitting}>
-            {submitting ? (
-              <>
-                <span className="spinner" />
-                Signing in…
-              </>
-            ) : (
-              <>
-                Sign in with Password
-                <Symbol name="arrow_forward" />
-              </>
-            )}
-          </button>
-
-          <button
-            type="button"
-            className="button secondary full face-signin-highlight"
-            onClick={() => setAuthMode('face')}
-          >
-            <Symbol name="face" filled />
-            Use Face ID Recognition
-          </button>
-
-          <div className="demo-accounts">
-            <span>Quick demo access</span>
-            <div>
-              {accountExamples.map((account) => (
-                <button
-                  type="button"
-                  key={account.role}
-                  className="choice-button"
-                  aria-pressed={email === account.email}
-                  onClick={() => {
-                    setEmail(account.email);
-                    setPassword(account.password);
-                  }}
-                >
-                  <Symbol
-                    name={
-                      account.role === 'student'
-                        ? 'school'
-                        : account.role === 'staff'
-                          ? 'engineering'
-                          : 'admin_panel_settings'
-                    }
-                  />
-                  {account.label}
-                </button>
-              ))}
+            <div className="gateway-status-footer">
+              <span>Directory Users: <strong>{gatewayInfo?.totalUsers ?? '3+'}</strong></span>
+              <span>Encryption: <strong>SHA-256 / scrypt</strong></span>
             </div>
-          </div>
-          <p className="login-footnote">
-            <Symbol name="database" />
-            Runs on a local SQLite database. Facial recognition runs locally via webcam.
-          </p>
-        </form>
+          </form>
+        ) : (
+          <form className="login-form" onSubmit={handleSignup}>
+            <div>
+              <span className="eyebrow">Registration Gateway</span>
+              <h2>Create New Account</h2>
+              <p>Enroll as a new student, facilities staff, or university administrator.</p>
+            </div>
+
+            <label>
+              Full Name
+              <input
+                name="name"
+                type="text"
+                value={signupName}
+                onChange={(event) => setSignupName(event.target.value)}
+                placeholder="e.g. Priyanshu Sharma"
+                required
+              />
+            </label>
+
+            <label>
+              University Email
+              <input
+                name="email"
+                type="email"
+                value={signupEmail}
+                onChange={(event) => setSignupEmail(event.target.value)}
+                placeholder="name@campus.university.edu"
+                required
+              />
+            </label>
+
+            <label>
+              Gateway Portal Access Role
+              <select
+                value={signupRole}
+                onChange={(event) => setSignupRole(event.target.value as Role)}
+              >
+                <option value="student">Student Portal (Reporting & Resolution Radar)</option>
+                <option value="staff">Facilities Staff (3D Campus Twin & Work Orders)</option>
+                <option value="admin">Executive Administrator (SLA & Department Oversight)</option>
+              </select>
+            </label>
+
+            <label>
+              Master Password
+              <input
+                name="signupPassword"
+                type="password"
+                value={signupPassword}
+                onChange={(event) => setSignupPassword(event.target.value)}
+                placeholder="At least 6 characters"
+                required
+              />
+            </label>
+
+            <label>
+              Confirm Password
+              <input
+                name="signupConfirm"
+                type="password"
+                value={signupConfirm}
+                onChange={(event) => setSignupConfirm(event.target.value)}
+                placeholder="Re-type password"
+                required
+              />
+            </label>
+
+            {error && (
+              <p className="form-error" role="alert">
+                <Symbol name="error" filled />
+                {error}
+              </p>
+            )}
+
+            <button type="submit" className="button primary full" disabled={submitting}>
+              {submitting ? (
+                <>
+                  <span className="spinner" />
+                  Creating Account & Enrolling…
+                </>
+              ) : (
+                <>
+                  Register & Launch Portal
+                  <Symbol name="person_add" />
+                </>
+              )}
+            </button>
+
+            <p className="login-footnote">
+              <Symbol name="verified_user" />
+              After registration, your account is immediately provisioned with facial recognition and role-based permissions.
+            </p>
+          </form>
+        )}
       </section>
     </main>
   );

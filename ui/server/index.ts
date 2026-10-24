@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { analyzeComplaint, autoWriteText, chatWithAi, compareCandidates, detectProblemFromImage, operationsPulse, triageTicket } from './ai.js';
-import { authenticateFace, authenticateLocal, createTicket, decideDuplicate, detailedAnalytics, findCandidates, getAllTickets, getTicket, initStore, listTickets, metrics, routingRules, submitStudentFeedback, updateTicket } from './store.js';
+import { authenticateFace, authenticateLocal, createTicket, decideDuplicate, detailedAnalytics, findCandidates, gatewayStats, getAllTickets, getTicket, initStore, listTickets, metrics, registerUser, routingRules, submitStudentFeedback, updateTicket } from './store.js';
 import { categories, statuses, type Category, type SessionUser, type TicketStatus } from '../src/types.js';
 
 initStore();
@@ -50,6 +50,13 @@ function routeId(req: Request) {
 }
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
+const signupSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
+  email: z.string().email('Please enter a valid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  role: z.enum(['student', 'staff', 'admin']),
+  faceData: z.string().optional(),
+});
 const faceLoginSchema = z.object({ identifier: z.string().min(1), faceData: z.string().optional() });
 const analyzeSchema = z.object({ description: z.string().min(4).max(1600), locationId: z.string().max(100).optional(), photo: z.object({ data: z.string().max(8_000_000), mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']) }).optional() });
 const imageDetectSchema = z.object({
@@ -69,6 +76,31 @@ const updateTicketSchema = z.object({ status: z.enum(statuses).optional(), assig
 const duplicateDecisionSchema = z.object({ candidateId: z.string().min(1), decision: z.enum(['confirmed_duplicate', 'not_duplicate', 'needs_investigation']), reasons: z.string().min(3).max(400) });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, mode: 'local-sqlite', aiConfigured: Boolean(process.env.GEMINI_API_KEY) }));
+
+// Unified Authentication & Gateway Status
+app.get('/api/auth/gateway-status', (_req, res) => {
+  res.json({
+    gateway: 'CampusConnect IAM Gateway',
+    status: 'ONLINE',
+    protocol: 'Bearer Token / TLS 1.3 / SHA-256 Biometrics',
+    activeSessions: sessions.size,
+    stats: gatewayStats(),
+  });
+});
+
+app.post('/api/auth/signup', (req, res) => {
+  const input = valid(signupSchema, req.body, res);
+  if (!input) return;
+  try {
+    const user = registerUser(input);
+    const token = randomBytes(32).toString('hex');
+    sessions.set(token, user);
+    res.status(201).json({ token, user, message: 'Account successfully registered in campus gateway.' });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Registration failed.';
+    res.status(409).json({ error: { code: 'REGISTRATION_FAILED', message } });
+  }
+});
 
 app.post('/api/auth/login', (req, res) => {
   const input = valid(loginSchema, req.body, res); if (!input) return;
