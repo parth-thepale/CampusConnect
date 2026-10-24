@@ -7,6 +7,7 @@ import {
   type OpsPulse,
   type ProblemAnalytics,
   type Role,
+  type SessionUser,
   type Ticket,
   type TicketStatus,
 } from './types';
@@ -330,7 +331,11 @@ export default function App() {
           {view === 'home' && (
             <StudentOverview
               tickets={tickets}
+              user={session.user}
+              campusConfig={campusConfig}
               onReport={() => setView('report')}
+              onExploreCampus={() => setView('campus')}
+              onViewAll={() => setView('tickets')}
               onOpen={openTicket}
             />
           )}
@@ -1310,73 +1315,227 @@ function NavButton({
 
 function StudentOverview({
   tickets,
+  user,
+  campusConfig,
   onReport,
+  onExploreCampus,
+  onViewAll,
   onOpen,
 }: {
   tickets: Ticket[];
+  user: SessionUser;
+  campusConfig: CampusConfig | null;
   onReport: () => void;
+  onExploreCampus: () => void;
+  onViewAll: () => void;
   onOpen: (id: string) => void;
 }) {
   const active = tickets.filter((ticket) => ticket.status !== 'resolved');
+  const inProgress = tickets.filter((ticket) => ticket.status === 'in_progress');
+  const resolved = tickets.filter((ticket) => ticket.status === 'resolved');
+  const firstName = user.name.split(' ')[0] || user.name;
+  const campusCode = campusConfig?.code || 'CAMPUS-2026';
+
   return (
-    <>
-      <section className="welcome-row">
-        <div>
-          <span className="eyebrow">Overview</span>
-          <h1>What needs attention?</h1>
-          <p>Report a facilities issue in your own words or snap a photo. AI detects the problem instantly.</p>
+    <div className="overview-container">
+      {/* Material 3 Hero Card */}
+      <section className="overview-hero">
+        <div className="overview-hero-content">
+          <div className="overview-hero-badge-row">
+            <span className="m3-badge status-live">
+              <span className="live-dot" />
+              Central Campus • Active Monitoring
+            </span>
+            <span className="m3-badge campus-pill" title="Institutional Gateway Code">
+              <Symbol name="domain" />
+              {campusCode}
+            </span>
+          </div>
+
+          <h1 className="overview-hero-title">
+            Welcome back, {firstName}
+          </h1>
+          <p className="overview-hero-sub">
+            Facilities triage, smart visual auto-diagnosis, and immediate maintenance dispatch for your university.
+          </p>
+
+          <div className="overview-hero-actions">
+            <button type="button" className="button primary m3-btn-elevated" onClick={onReport}>
+              <Symbol name="add_circle" filled />
+              <span>Report an issue</span>
+            </button>
+            <button type="button" className="button secondary m3-btn-tonal" onClick={onExploreCampus}>
+              <Symbol name="view_in_ar" />
+              <span>Campus 3D View</span>
+            </button>
+          </div>
         </div>
-        <button type="button" className="button primary" onClick={onReport}>
-          <Symbol name="add" />
-          Report an issue
-        </button>
+
+        <div className="overview-hero-watermark" aria-hidden="true">
+          <Symbol name="school" />
+        </div>
       </section>
 
-      <section className="summary-grid" aria-label="Ticket summary">
-        <Metric label="Open tickets" value={String(active.length)} detail="Awaiting or receiving action" />
-        <Metric
-          label="In progress"
-          value={String(tickets.filter((ticket) => ticket.status === 'in_progress').length)}
-          detail="Teams are actively investigating"
-        />
-        <Metric
-          label="Resolved"
-          value={String(tickets.filter((ticket) => ticket.status === 'resolved').length)}
-          detail="Kept in your history"
-        />
+      {/* M3 Quick Intake Launchpads */}
+      <section className="overview-section">
+        <div className="overview-section-header">
+          <div>
+            <span className="eyebrow">Quick Intake</span>
+            <h2>How would you like to report?</h2>
+          </div>
+          <span className="overview-hint">Powered by Multimodal Gemini</span>
+        </div>
+
+        <div className="overview-launchpad-grid">
+          <button type="button" className="overview-launch-card visual-card" onClick={onReport}>
+            <div className="launch-card-icon-shell primary-tone">
+              <Symbol name="photo_camera" filled />
+            </div>
+            <div className="launch-card-body">
+              <div className="launch-card-title-row">
+                <h3>Visual Problem Auto-Detection</h3>
+                <span className="launch-arrow"><Symbol name="arrow_forward" /></span>
+              </div>
+              <p>
+                Snap or upload photos of broken fixtures, leaks, or electrical hazards. Multimodal AI automatically categorizes and routes the ticket.
+              </p>
+              <div className="launch-tags">
+                <span className="launch-tag">Instant Analysis</span>
+                <span className="launch-tag">Auto-Severity</span>
+              </div>
+            </div>
+          </button>
+
+          <button type="button" className="overview-launch-card voice-card" onClick={onReport}>
+            <div className="launch-card-icon-shell tertiary-tone">
+              <Symbol name="mic" filled />
+            </div>
+            <div className="launch-card-body">
+              <div className="launch-card-title-row">
+                <h3>Voice & Natural Text Intake</h3>
+                <span className="launch-arrow"><Symbol name="arrow_forward" /></span>
+              </div>
+              <p>
+                Speak naturally using your microphone or write in everyday language. Smart triage extracts location details and dispatches immediately.
+              </p>
+              <div className="launch-tags">
+                <span className="launch-tag">Voice Dictation</span>
+                <span className="launch-tag">Smart Form Fill</span>
+              </div>
+            </div>
+          </button>
+        </div>
       </section>
 
-      <section className="section-head">
-        <div>
-          <h2>Recent tickets</h2>
-          <p>Updates and staff resolution notes are saved to your timeline.</p>
+      {/* M3 Tonal Metrics Cards */}
+      <section className="overview-section">
+        <div className="overview-section-header">
+          <div>
+            <span className="eyebrow">Your Campus Activity</span>
+            <h2>Ticket Status & Metrics</h2>
+          </div>
         </div>
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => tickets[0] && onOpen(tickets[0].id)}
-        >
-          View all
-          <Symbol name="arrow_forward" />
-        </button>
+
+        <div className="overview-metrics-grid">
+          <div className="m3-metric-card">
+            <div className="metric-icon-wrap warning-tone">
+              <Symbol name="hourglass_top" />
+            </div>
+            <div className="metric-data">
+              <span className="metric-label">Open / In Queue</span>
+              <strong className="metric-number">{active.length}</strong>
+              <small className="metric-detail">{active.length === 0 ? 'Queue is clear' : `${active.length} awaiting resolution`}</small>
+            </div>
+          </div>
+
+          <div className="m3-metric-card">
+            <div className="metric-icon-wrap primary-tone">
+              <Symbol name="engineering" />
+            </div>
+            <div className="metric-data">
+              <span className="metric-label">In Progress</span>
+              <strong className="metric-number">{inProgress.length}</strong>
+              <small className="metric-detail">{inProgress.length === 0 ? 'No active repairs' : 'Staff dispatched on-site'}</small>
+            </div>
+          </div>
+
+          <div className="m3-metric-card">
+            <div className="metric-icon-wrap success-tone">
+              <Symbol name="task_alt" filled />
+            </div>
+            <div className="metric-data">
+              <span className="metric-label">Resolved</span>
+              <strong className="metric-number">{resolved.length}</strong>
+              <small className="metric-detail">{resolved.length === 0 ? 'No past tickets' : 'Recorded in history'}</small>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {tickets.length ? (
-        <div className="ticket-list compact">
-          {tickets.slice(0, 3).map((ticket) => (
-            <TicketRow key={ticket.id} ticket={ticket} onOpen={onOpen} />
-          ))}
+      {/* Campus Utilities Glance Strip */}
+      <section className="overview-services-bar">
+        <div className="service-chip">
+          <span className="service-dot online" />
+          <Symbol name="wifi" />
+          <span>Wi-Fi & Networks: <strong>Operational</strong></span>
         </div>
-      ) : (
-        <EmptyState
-          icon="assignment_add"
-          title="Your ticket history is clear"
-          text="Start a report whenever you notice a campus maintenance issue."
-          action="Report an issue"
-          onAction={onReport}
-        />
-      )}
-    </>
+        <div className="service-chip">
+          <span className="service-dot online" />
+          <Symbol name="bolt" />
+          <span>Power & Elevators: <strong>Normal</strong></span>
+        </div>
+        <div className="service-chip">
+          <span className="service-dot online" />
+          <Symbol name="water_drop" />
+          <span>Water & Sanitation: <strong>Active</strong></span>
+        </div>
+        <div className="service-chip">
+          <span className="service-dot online" />
+          <Symbol name="cleaning_services" />
+          <span>Facilities Dispatch: <strong>On Duty</strong></span>
+        </div>
+      </section>
+
+      {/* Recent Activity Section */}
+      <section className="overview-section">
+        <div className="overview-section-header">
+          <div>
+            <span className="eyebrow">Timeline</span>
+            <h2>Recent Reports</h2>
+          </div>
+          {tickets.length > 0 && (
+            <button
+              type="button"
+              className="text-button m3-text-btn"
+              onClick={onViewAll}
+            >
+              <span>View all ({tickets.length})</span>
+              <Symbol name="arrow_forward" />
+            </button>
+          )}
+        </div>
+
+        {tickets.length > 0 ? (
+          <div className="m3-ticket-deck">
+            {tickets.slice(0, 4).map((ticket) => (
+              <TicketRow key={ticket.id} ticket={ticket} onOpen={onOpen} />
+            ))}
+          </div>
+        ) : (
+          <div className="m3-empty-card">
+            <div className="empty-icon-ring">
+              <Symbol name="check_circle" filled />
+            </div>
+            <h3>Everything looks great</h3>
+            <p>You have no active maintenance issues reported. Whenever you notice an issue around campus, let facilities know with one tap.</p>
+            <button type="button" className="button primary" onClick={onReport}>
+              <Symbol name="add" />
+              Report an issue
+            </button>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 
