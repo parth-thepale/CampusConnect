@@ -17,6 +17,7 @@ import SmartTextArea from './SmartTextArea';
 import Chatbot from './Chatbot';
 import Campus3D from './Campus3D';
 import CampusQr from './CampusQr';
+import CampusArchitectModal from './CampusArchitectModal';
 import { playSound } from './audio';
 import { exportTicketsCsv, printExecutiveReport } from './exportReports';
 
@@ -64,6 +65,7 @@ export default function App() {
   const [showCredentialPass, setShowCredentialPass] = useState(false);
   const [showFaceEnrollModal, setShowFaceEnrollModal] = useState(false);
   const [showAdminCampusModal, setShowAdminCampusModal] = useState(false);
+  const [showAdminArchitectModal, setShowAdminArchitectModal] = useState(false);
   const [campusConfig, setCampusConfig] = useState<CampusConfig | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [view, setView] = useState<View>('home');
@@ -278,6 +280,18 @@ export default function App() {
                 <span>Campus QR ({campusConfig.code})</span>
               </button>
             )}
+            {session.user.role === 'admin' && (
+              <button
+                type="button"
+                className="credential-pass-pill"
+                onClick={() => setShowAdminArchitectModal(true)}
+                title="Architect & customize campus buildings, zones, and 3D layout"
+                style={{ background: 'var(--md-sys-color-primary-container)', borderColor: 'var(--md-sys-color-primary)', color: 'var(--md-sys-color-on-primary-container)' }}
+              >
+                <Symbol name="domain_add" filled />
+                <span>Design Campus</span>
+              </button>
+            )}
             <button
               type="button"
               className="credential-pass-pill"
@@ -378,6 +392,8 @@ export default function App() {
             <Campus3D
               tickets={tickets}
               onOpenTicket={openTicket}
+              isAdmin={session.user.role === 'admin'}
+              onOpenArchitect={() => setShowAdminArchitectModal(true)}
             />
           )}
           {view === 'ticket' && selectedTicket && (
@@ -458,6 +474,12 @@ export default function App() {
           config={campusConfig}
           onClose={() => setShowAdminCampusModal(false)}
           onUpdate={(cfg) => setCampusConfig(cfg)}
+        />
+      )}
+
+      {showAdminArchitectModal && (
+        <CampusArchitectModal
+          onClose={() => setShowAdminArchitectModal(false)}
         />
       )}
     </div>
@@ -802,8 +824,8 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
   const [campusConfig, setCampusConfig] = useState<CampusConfig | null>(null);
 
   // Sign In state
-  const [email, setEmail] = useState('student@campusconnect.local');
-  const [password, setPassword] = useState('campus123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   // Sign Up state
   const [signupName, setSignupName] = useState('');
@@ -946,44 +968,23 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
               <p>Choose your target portal gateway or enter credentials.</p>
             </div>
 
-            {/* Role Portal Quick Selection */}
+            {/* Role Portal Overview */}
             <div className="portal-gateway-selector">
-              <button
-                type="button"
-                className={`portal-card-btn ${email === 'student@campusconnect.local' ? 'active' : ''}`}
-                onClick={() => {
-                  setEmail('student@campusconnect.local');
-                  setPassword('campus123');
-                }}
-              >
+              <div className="portal-card-btn active">
                 <Symbol name="school" filled />
                 <span className="portal-title">Student Portal</span>
                 <span className="portal-desc">Reports & Radar</span>
-              </button>
-              <button
-                type="button"
-                className={`portal-card-btn ${email === 'staff@campusconnect.local' ? 'active' : ''}`}
-                onClick={() => {
-                  setEmail('staff@campusconnect.local');
-                  setPassword('campus123');
-                }}
-              >
+              </div>
+              <div className="portal-card-btn">
                 <Symbol name="engineering" filled />
                 <span className="portal-title">Facilities Staff</span>
                 <span className="portal-desc">3D Twin & Triage</span>
-              </button>
-              <button
-                type="button"
-                className={`portal-card-btn ${email === 'admin@campusconnect.local' ? 'active' : ''}`}
-                onClick={() => {
-                  setEmail('admin@campusconnect.local');
-                  setPassword('campus123');
-                }}
-              >
+              </div>
+              <div className="portal-card-btn">
                 <Symbol name="admin_panel_settings" filled />
                 <span className="portal-title">Admin Gateway</span>
-                <span className="portal-desc">SLA & Capacity</span>
-              </button>
+                <span className="portal-desc">Campus Architecture & QR</span>
+              </div>
             </div>
 
             <div className="auth-tab-row">
@@ -1079,40 +1080,8 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
             </button>
 
             <div className="gateway-status-footer">
-              <span>Directory Users: <strong>{gatewayInfo?.totalUsers ?? '3+'}</strong></span>
-              <span>Encryption: <strong>SHA-256 / scrypt</strong></span>
-            </div>
-
-            <div className="quick-access-panel" style={{ marginTop: '12px', padding: '12px', background: 'var(--surface-container-low)', borderRadius: '12px', border: '1px solid var(--outline-variant)' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--on-surface-variant)', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'block', marginBottom: '8px' }}>
-                ⚡ First-Time Quick Credentials & ID Passes
-              </span>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
-                <button
-                  type="button"
-                  className="button secondary compact"
-                  style={{ fontSize: '11px', padding: '6px' }}
-                  onClick={() => { setEmail('student@campusconnect.local'); setPassword('campus123'); }}
-                >
-                  <Symbol name="school" /> Student
-                </button>
-                <button
-                  type="button"
-                  className="button secondary compact"
-                  style={{ fontSize: '11px', padding: '6px' }}
-                  onClick={() => { setEmail('staff@campusconnect.local'); setPassword('campus123'); }}
-                >
-                  <Symbol name="engineering" /> Staff
-                </button>
-                <button
-                  type="button"
-                  className="button secondary compact"
-                  style={{ fontSize: '11px', padding: '6px' }}
-                  onClick={() => { setEmail('admin@campusconnect.local'); setPassword('campus123'); }}
-                >
-                  <Symbol name="admin_panel_settings" /> Admin
-                </button>
-              </div>
+              <span>Directory Accounts: <strong>{gatewayInfo?.totalUsers ?? 0}</strong></span>
+              <span>Protocol: <strong>TLS 1.3 / SHA-256</strong></span>
             </div>
           </form>
         ) : (

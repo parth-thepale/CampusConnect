@@ -36,6 +36,19 @@ test('1. Initialize isolated campus store with zero placeholder tickets', () => 
 });
 
 test('2. Institutional Campus Code gateway initialized when admin exists', () => {
+  // Before admin exists, gateway indicates uninitialized
+  const preConfig = getCampusConfig();
+  assert.equal(preConfig.isInitialized, false, 'Campus gateway is uninitialized until admin account exists');
+
+  // Register founding university administrator
+  registerUser({
+    name: 'Campus Administrator',
+    email: 'admin@campusconnect.local',
+    password: 'admin-secure-pwd',
+    role: 'admin',
+    faceData: 'data:image/jpeg;base64,ADMIN_FACE_VECTOR',
+  });
+
   const config = getCampusConfig();
   assert.equal(config.isInitialized, true, 'Campus gateway must be initialized when admin account exists');
   assert.equal(config.code, 'CAMPUS-2026', 'Default campus code should be established as CAMPUS-2026');
@@ -113,7 +126,7 @@ test('7. Biometric Facial Recognition login gateway verification', () => {
 
 test('8. Enrolled Users Directory returns all credentials and face enrollment flags', () => {
   const directory = listEnrolledUsers();
-  assert.ok(directory.length >= 4, 'Directory should contain default users plus newly registered user');
+  assert.ok(directory.length >= 2, 'Directory should contain registered admin and student');
   
   const rohan = directory.find((u) => u.email === 'rohan.student@campusconnect.edu');
   assert.ok(rohan, 'Rohan must be present in gateway directory');
@@ -122,17 +135,17 @@ test('8. Enrolled Users Directory returns all credentials and face enrollment fl
 });
 
 test('9. Face key enrollment update for existing authenticated session', () => {
-  const student = { uid: 'student-ava', name: 'Ava Patel', email: 'student@campusconnect.local', role: 'student' as const };
+  const student = { uid: 'student-rohan', name: 'Rohan Sharma', email: 'rohan.student@campusconnect.edu', role: 'student' as const };
   const updatedFace = 'data:image/jpeg;base64,UPDATED_FACE_VECTOR_HASH';
   const updated = updateUserFace(student, updatedFace);
   assert.equal(updated.faceData, updatedFace);
 
-  const verified = authenticateFace('student@campusconnect.local');
+  const verified = authenticateFace('rohan.student@campusconnect.edu');
   assert.equal(verified?.faceData, updatedFace);
 });
 
 test('10. Edge Case: Clean ticket creation and isolated student ticket queue', () => {
-  const student = { uid: 'student-ava', name: 'Ava Patel', email: 'student@campusconnect.local', role: 'student' as const };
+  const student = { uid: 'student-rohan', name: 'Rohan Sharma', email: 'rohan.student@campusconnect.edu', role: 'student' as const };
   const ticket = createTicket(student, {
     originalText: 'Library 3rd floor AC temperature sensor is reading 38C',
     summary: 'Library 3F AC sensor malfunction',

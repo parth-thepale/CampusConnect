@@ -117,15 +117,6 @@ export function initStore() {
   try { db.exec('ALTER TABLE users ADD COLUMN face_data TEXT;'); } catch { /* column exists */ }
   try { db.exec('ALTER TABLE tickets ADD COLUMN studentFeedback TEXT;'); } catch { /* column exists */ }
 
-  if ((db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }).count === 0) {
-    const createUser = db.prepare('INSERT INTO users (id, name, email, role, password_hash) VALUES (?, ?, ?, ?, ?)');
-    for (const user of [
-      ['student-ava', 'Ava Patel', 'student@campusconnect.local', 'student'],
-      ['staff-aarav', 'Aarav Mehta', 'staff@campusconnect.local', 'staff'],
-      ['admin-nisha', 'Nisha Rao', 'admin@campusconnect.local', 'admin'],
-    ]) createUser.run(...user, passwordHash('campus123'));
-  }
-
   if ((db.prepare('SELECT COUNT(*) AS count FROM routing_rules').get() as { count: number }).count === 0) {
     const rule = db.prepare('INSERT INTO routing_rules (id, category, department, evidence, is_demo) VALUES (?, ?, ?, ?, 1)');
     rule.run('route-plumbing', 'plumbing', 'Facilities plumbing team', 'Illustrative routing rule • CampusConnect demo configuration');
@@ -143,6 +134,7 @@ export function initStore() {
     db.exec(`
       DELETE FROM tickets WHERE id IN ('ticket-wifi-library', 'ticket-tap-blockb', 'ticket-light-hostela');
       DELETE FROM ticket_events WHERE ticket_id IN ('ticket-wifi-library', 'ticket-tap-blockb', 'ticket-light-hostela');
+      DELETE FROM users WHERE id IN ('student-ava', 'staff-aarav', 'admin-nisha', 'usr-student-ava', 'usr-staff-aarav', 'usr-admin-nisha') OR lower(email) IN ('student@campusconnect.local', 'staff@campusconnect.local', 'admin@campusconnect.local');
     `);
   } catch {
     /* ignore */

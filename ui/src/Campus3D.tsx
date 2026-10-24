@@ -2,16 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { Category, Ticket } from './types';
 import { playSound, isAudioMuted, setAudioMuted } from './audio';
+import {
+  type CampusBuildingData,
+  getCampusBuildings,
+} from './campusStore';
 
-export interface CampusBuildingData {
-  id: string;
-  name: string;
-  code: string;
-  type: 'hostel' | 'academic' | 'library' | 'dining' | 'hub';
-  coordinates: { x: number; y: number; z: number };
-  mapPosition: { x: number; y: number };
-  floors: string[];
-}
+export type { CampusBuildingData };
 
 export interface TechnicianOnDuty {
   id: string;
@@ -26,82 +22,6 @@ export interface TechnicianOnDuty {
   category?: Category;
   contact: string;
 }
-
-// Generously spaced, uncluttered campus layout
-const CAMPUS_BUILDINGS: CampusBuildingData[] = [
-  {
-    id: 'b-hostel-b',
-    name: 'Gargi Hostel (Block B)',
-    code: 'GH-B',
-    type: 'hostel',
-    coordinates: { x: -11.5, y: 1.3, z: 6.0 },
-    mapPosition: { x: 18, y: 74 },
-    floors: ['Floor 1 (Rooms 101-125)', 'Floor 2 (Rooms 201-225)', 'Floor 3 (Rooms 301-325)', 'Common Washroom Wing B'],
-  },
-  {
-    id: 'b-hostel-c',
-    name: 'Tagore Hostel (Block C)',
-    code: 'TH-C',
-    type: 'hostel',
-    coordinates: { x: -11.5, y: 1.4, z: -6.0 },
-    mapPosition: { x: 18, y: 26 },
-    floors: ['Floor 1 (Rooms 101-130)', 'Floor 2 (Rooms 201-230)', 'Floor 3 (Rooms 301-330)', 'Floor 4 (Rooms 401-430)'],
-  },
-  {
-    id: 'b-hostel-a',
-    name: 'Hostel Block A (Raman Hostel)',
-    code: 'RH-A',
-    type: 'hostel',
-    coordinates: { x: -15.0, y: 1.2, z: 0.0 },
-    mapPosition: { x: 10, y: 50 },
-    floors: ['Ground Floor (Rooms G1-G20)', 'Floor 1 (Rooms 101-125)', 'Floor 2 (Rooms 201-225)'],
-  },
-  {
-    id: 'b-library',
-    name: 'Central Knowledge Commons (Library)',
-    code: 'CK-LIB',
-    type: 'library',
-    coordinates: { x: 0.0, y: 1.5, z: 0.0 },
-    mapPosition: { x: 50, y: 50 },
-    floors: ['Ground Floor Circulation', 'Floor 1 Quiet Study', 'Floor 2 Digital Commons & Wi-Fi', 'Floor 3 Research Pods'],
-  },
-  {
-    id: 'b-science',
-    name: 'Science & Innovation Complex (Lab 1)',
-    code: 'SI-LAB',
-    type: 'academic',
-    coordinates: { x: 11.5, y: 1.5, z: 6.0 },
-    mapPosition: { x: 82, y: 74 },
-    floors: ['Lab 1 (Robotics & Circuits)', 'Lab 2 (Optics & Physics)', 'Floor 2 Faculty Chambers'],
-  },
-  {
-    id: 'b-eng-quad',
-    name: 'APJ Abdul Kalam Engineering Quad',
-    code: 'AK-EQ',
-    type: 'academic',
-    coordinates: { x: 11.5, y: 1.6, z: -6.0 },
-    mapPosition: { x: 82, y: 26 },
-    floors: ['Ground Auditorium', 'Floor 1 Computing Cluster', 'Floor 2 Lecture Halls', 'Server & Switch Vault'],
-  },
-  {
-    id: 'b-dining',
-    name: 'Student Dining & Cafeteria Hub',
-    code: 'SD-CH',
-    type: 'dining',
-    coordinates: { x: 0.0, y: 1.1, z: 10.5 },
-    mapPosition: { x: 50, y: 88 },
-    floors: ['Ground Main Mess Hall', 'Courtyard Food Court', 'Pantry & Refrigeration'],
-  },
-  {
-    id: 'b-dispatch-hub',
-    name: 'Facilities Maintenance & Dispatch Hub',
-    code: 'FM-HUB',
-    type: 'hub',
-    coordinates: { x: 0.0, y: 1.2, z: -10.5 },
-    mapPosition: { x: 50, y: 12 },
-    floors: ['Ground Equipment Depot', 'Rapid Dispatch Command', 'Parts & Spares Inventory'],
-  },
-];
 
 const categoryColors: Record<Category, { hex: number; css: string; label: string }> = {
   plumbing: { hex: 0x0284c7, css: '#0284c7', label: 'Plumbing' },
@@ -215,14 +135,21 @@ function createBuildingLabelSprite(
   return sprite;
 }
 
+export interface Campus3DProps {
+  tickets: Ticket[];
+  onOpenTicket?: (ticketId: string) => void;
+  isAdmin?: boolean;
+  onOpenArchitect?: () => void;
+}
+
 export default function Campus3D({
   tickets,
   onOpenTicket,
-}: {
-  tickets: Ticket[];
-  onOpenTicket?: (ticketId: string) => void;
-}) {
+  isAdmin = false,
+  onOpenArchitect,
+}: Campus3DProps) {
   const mountRef = useRef<HTMLDivElement>(null);
+  const [campusBuildings, setCampusBuildings] = useState<CampusBuildingData[]>(() => getCampusBuildings());
   const [viewMode, setViewMode] = useState<'3d' | '2d'>('3d');
   const [lightingMode, setLightingMode] = useState<'day' | 'night'>('day');
   const [audioMutedState, setAudioMutedState] = useState(isAudioMuted());
@@ -230,6 +157,14 @@ export default function Campus3D({
   const [hoveredBuildingName, setHoveredBuildingName] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [routeActive, setRouteActive] = useState(true);
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setCampusBuildings(getCampusBuildings());
+    };
+    window.addEventListener('campus_buildings_updated', handleUpdate);
+    return () => window.removeEventListener('campus_buildings_updated', handleUpdate);
+  }, []);
 
   const resetCameraRef = useRef<() => void>(() => {});
 
@@ -306,9 +241,9 @@ export default function Campus3D({
 
   // Selected building object
   const selectedBuilding = useMemo(() => {
-    if (!selectedBuildingId) return null;
-    return CAMPUS_BUILDINGS.find((b) => b.id === selectedBuildingId) ?? null;
-  }, [selectedBuildingId]);
+    if (!selectedBuildingId) return campusBuildings[0] ?? null;
+    return campusBuildings.find((b) => b.id === selectedBuildingId) ?? campusBuildings[0] ?? null;
+  }, [selectedBuildingId, campusBuildings]);
 
   // Selected building's technician (if any)
   const selectedTech = useMemo(() => {
@@ -519,7 +454,7 @@ export default function Campus3D({
     const buildingGroup = new THREE.Group();
     const buildingMeshes: THREE.Mesh[] = [];
 
-    CAMPUS_BUILDINGS.forEach((b) => {
+    campusBuildings.forEach((b) => {
       let bHeight = 3.4;
       let bWidth = 3.6;
       let bDepth = 3.2;
@@ -626,7 +561,7 @@ export default function Campus3D({
     const beaconGroup = new THREE.Group();
     const beaconRings: { mesh: THREE.Mesh; baseY: number; offset: number }[] = [];
 
-    CAMPUS_BUILDINGS.forEach((b) => {
+    campusBuildings.forEach((b) => {
       const locKey = b.id === 'b-hostel-b' ? 'block-b'
         : b.id === 'b-hostel-c' ? 'block-c'
         : b.id === 'b-hostel-a' ? 'hostel-a'
@@ -686,7 +621,7 @@ export default function Campus3D({
     const techRings: { mesh: THREE.Mesh; offset: number }[] = [];
 
     technicians.forEach((t, i) => {
-      const bObj = CAMPUS_BUILDINGS.find((b) => b.id === t.buildingId);
+      const bObj = campusBuildings.find((b) => b.id === t.buildingId);
       if (!bObj) return;
 
       const markerX = bObj.coordinates.x + 2.2;
@@ -833,7 +768,7 @@ export default function Campus3D({
           const bId = hit.object.userData.buildingId;
           setSelectedBuildingId(bId);
           playSound('dispatch');
-          const bTarget = CAMPUS_BUILDINGS.find((b) => b.id === bId);
+          const bTarget = campusBuildings.find((b) => b.id === bId);
           if (bTarget) {
             // Smoothly glide camera target towards selected building!
             targetLookAt.set(bTarget.coordinates.x * 0.6, 1.2, bTarget.coordinates.z * 0.6);
@@ -923,7 +858,7 @@ export default function Campus3D({
       window.removeEventListener('resize', onResize);
       renderer.dispose();
     };
-  }, [viewMode, selectedBuilding, tickets, technicians, routeActive, lightingMode]);
+  }, [viewMode, selectedBuilding, tickets, technicians, routeActive, lightingMode, campusBuildings]);
 
   return (
     <div className="campus-twin-container free-layout">
@@ -1021,6 +956,21 @@ export default function Campus3D({
             >
               <Symbol name="restart_alt" />
               <span>Overview</span>
+            </button>
+          )}
+
+          {isAdmin && onOpenArchitect && (
+            <button
+              type="button"
+              className="button primary sm architect-btn"
+              onClick={() => {
+                playSound('click');
+                onOpenArchitect();
+              }}
+              title="Architect & customize campus buildings"
+            >
+              <Symbol name="domain_add" />
+              <span>Design Campus</span>
             </button>
           )}
         </div>
@@ -1228,7 +1178,7 @@ export default function Campus3D({
             </div>
 
             {/* Building Nodes */}
-            {CAMPUS_BUILDINGS.map((b) => {
+            {campusBuildings.map((b) => {
               const isSelected = b.id === selectedBuilding?.id;
               const techHere = technicians.find((t) => t.buildingId === b.id);
               const locKey = b.id === 'b-hostel-b' ? 'block-b'

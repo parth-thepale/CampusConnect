@@ -60,25 +60,29 @@ interface LocalUser {
   memberId?: string;
 }
 
-const DEFAULT_USERS: LocalUser[] = [
-  { id: 'usr-student-ava', name: 'Ava Patel', email: 'student@campusconnect.local', role: 'student', password: 'campus123', memberId: 'CC-ID-2026-4401' },
-  { id: 'usr-student-edu', name: 'Ava Patel', email: 'student@campusconnect.edu', role: 'student', password: 'student123', memberId: 'CC-ID-2026-4402' },
-  { id: 'usr-staff-aarav', name: 'Aarav Mehta', email: 'staff@campusconnect.local', role: 'staff', password: 'campus123', memberId: 'CC-ID-2026-8801' },
-  { id: 'usr-staff-edu', name: 'Aarav Mehta', email: 'staff@campusconnect.edu', role: 'staff', password: 'staff123', memberId: 'CC-ID-2026-8802' },
-  { id: 'usr-admin-nisha', name: 'Nisha Rao', email: 'admin@campusconnect.local', role: 'admin', password: 'campus123', memberId: 'CC-ID-2026-9901' },
-  { id: 'usr-admin-edu', name: 'Nisha Rao', email: 'admin@campusconnect.edu', role: 'admin', password: 'admin123', memberId: 'CC-ID-2026-9902' },
-];
 
 function getStoredUsers(): LocalUser[] {
   try {
     const raw = localStorage.getItem(usersStorageKey);
     if (!raw) {
-      localStorage.setItem(usersStorageKey, JSON.stringify(DEFAULT_USERS));
-      return DEFAULT_USERS;
+      localStorage.setItem(usersStorageKey, JSON.stringify([]));
+      return [];
     }
-    return JSON.parse(raw) as LocalUser[];
+    const list = JSON.parse(raw) as LocalUser[];
+    // Automatically purge any legacy placeholder testing users
+    const clean = list.filter((u) =>
+      !u.id.startsWith('usr-student') &&
+      !u.id.startsWith('usr-staff') &&
+      !u.id.startsWith('usr-admin') &&
+      !['student-ava', 'staff-aarav', 'admin-nisha'].includes(u.id) &&
+      !['student@campusconnect.local', 'staff@campusconnect.local', 'admin@campusconnect.local'].includes(u.email.toLowerCase())
+    );
+    if (clean.length !== list.length) {
+      localStorage.setItem(usersStorageKey, JSON.stringify(clean));
+    }
+    return clean;
   } catch {
-    return DEFAULT_USERS;
+    return [];
   }
 }
 
@@ -898,8 +902,4 @@ export const api = {
   enrollFace: (faceData: string) => request<{ user: SessionUser; message: string }>('/api/auth/enroll-face', { method: 'POST', body: JSON.stringify({ faceData }) }),
 };
 
-export const accountExamples: { label: string; email: string; password: string; role: Role }[] = [
-  { label: 'Student', email: 'student@campusconnect.local', password: 'campus123', role: 'student' },
-  { label: 'Staff', email: 'staff@campusconnect.local', password: 'campus123', role: 'staff' },
-  { label: 'Admin', email: 'admin@campusconnect.local', password: 'campus123', role: 'admin' },
-];
+export const accountExamples: { label: string; email: string; password: string; role: Role }[] = [];

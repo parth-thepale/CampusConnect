@@ -42,12 +42,7 @@ export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
         }
       })
       .catch(() => {
-        // Fallback default profiles
-        setProfiles([
-          { uid: 'usr-student-ava', name: 'Ava Patel', email: 'student@campusconnect.local', role: 'student', memberId: 'CC-ID-2026-4401', hasFaceEnrolled: true },
-          { uid: 'usr-staff-aarav', name: 'Aarav Mehta', email: 'staff@campusconnect.local', role: 'staff', memberId: 'CC-ID-2026-8801', hasFaceEnrolled: true },
-          { uid: 'usr-admin-nisha', name: 'Nisha Rao', email: 'admin@campusconnect.local', role: 'admin', memberId: 'CC-ID-2026-9901', hasFaceEnrolled: true },
-        ]);
+        setProfiles([]);
       });
   }, []);
 
@@ -186,29 +181,35 @@ export default function FaceLogin({ onSuccess, onCancel }: FaceLoginProps) {
           </div>
           
           <div className="profile-buttons">
-            {profiles.map((p) => {
-              const isSelected = selectedIdentifier === p.email && !customInput;
-              return (
-                <button
-                  key={p.uid}
-                  type="button"
-                  className={`choice-button profile-chip ${isSelected ? 'selected' : ''}`}
-                  aria-pressed={isSelected}
-                  onClick={() => {
-                    setSelectedIdentifier(p.email);
-                    setCustomInput('');
-                  }}
-                >
-                  {p.faceData ? (
-                    <img src={p.faceData} alt={p.name} className="chip-avatar-img" />
-                  ) : (
-                    <Icon name={p.role === 'student' ? 'school' : p.role === 'staff' ? 'engineering' : 'admin_panel_settings'} />
-                  )}
-                  <span className="chip-name">{p.name}</span>
-                  <span className="chip-role">({p.role})</span>
-                </button>
-              );
-            })}
+            {profiles.length > 0 ? (
+              profiles.map((p) => {
+                const isSelected = selectedIdentifier === p.email && !customInput;
+                return (
+                  <button
+                    key={p.uid}
+                    type="button"
+                    className={`choice-button profile-chip ${isSelected ? 'selected' : ''}`}
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      setSelectedIdentifier(p.email);
+                      setCustomInput('');
+                    }}
+                  >
+                    {p.faceData ? (
+                      <img src={p.faceData} alt={p.name} className="chip-avatar-img" />
+                    ) : (
+                      <Icon name={p.role === 'student' ? 'school' : p.role === 'staff' ? 'engineering' : 'admin_panel_settings'} />
+                    )}
+                    <span className="chip-name">{p.name}</span>
+                    <span className="chip-role">({p.role})</span>
+                  </button>
+                );
+              })
+            ) : (
+              <span style={{ fontSize: '12px', color: 'var(--on-surface-variant)', padding: '6px 0' }}>
+                No pre-enrolled biometric profiles on this device yet. Enter your registered institutional email below to match your camera template.
+              </span>
+            )}
           </div>
 
           <div className="custom-identity-row">
