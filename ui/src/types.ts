@@ -15,6 +15,15 @@ export interface CampusConfig {
   isInitialized: boolean;
 }
 
+export interface CampusIdRecord {
+  id: string;
+  code: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  createdBy?: string;
+}
+
 export interface SessionUser {
   uid: string;
   name: string;

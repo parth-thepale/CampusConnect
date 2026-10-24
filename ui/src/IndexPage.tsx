@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { CampusConfig, SessionUser } from './types';
+import { useLanguage, LanguageToggle } from './i18n';
 
 interface IndexPageProps {
   campusConfig: CampusConfig | null;
@@ -22,6 +23,7 @@ export default function IndexPage({
   onNavigateToLogin,
   onEnterOverview,
 }: IndexPageProps) {
+  const { lang, t } = useLanguage();
   const [activeFeatureTab, setActiveFeatureTab] = useState<'multimodal' | 'twin3d' | 'biometric' | 'operations'>('multimodal');
   const [activeRoleTab, setActiveRoleTab] = useState<'student' | 'technician' | 'admin'>('student');
   const [activeSimStep, setActiveSimStep] = useState<number>(0);
@@ -47,7 +49,40 @@ export default function IndexPage({
     return () => clearInterval(timer);
   }, []);
 
-  const simulationSteps = [
+  const simulationSteps = lang === 'hi' ? [
+    {
+      title: '1. मल्टीमॉडल इनटेक',
+      icon: 'photo_camera',
+      badge: 'मल्टीमॉडल जेमिनी एआई',
+      desc: 'छात्र साइंस हॉल 302 में टूटे पाइप की फोटो खींचते हैं या वॉयस से विवरण देते हैं।',
+      detail: 'विज़ुअल एआई 94% खतरे की गंभीरता और पानी के दबाव का पता लगाकर तत्काल शटऑफ की सिफारिश करता है।',
+      tag: 'वॉयस और कंप्यूटर विज़न',
+    },
+    {
+      title: '2. ऑटोनॉमस स्पष्टीकरण',
+      icon: 'psychology',
+      badge: 'सक्रिय स्पष्टीकरण',
+      desc: 'संवादात्मक एजेंट पूछता है: "क्या पानी कमरा 302 के सर्वर रैक की तरफ फैल रहा है?"',
+      detail: 'छात्र 1-टैप में पुष्टि करते हैं। टिकट में सटीक उप-कक्ष निर्देशांक जोड़ दिए जाते हैं।',
+      tag: 'शून्य अस्पष्ट शिकायतें',
+    },
+    {
+      title: '3. डुप्लिकेट व एसएलए छंटनी',
+      icon: 'account_tree',
+      badge: 'सिमेंटिक क्लस्टरिंग',
+      desc: 'प्रणाली 12 सक्रिय टिकटों की तुलना करती है, 8 मीटर दूर से 1 संबंधित रिपोर्ट का पता लगाती है और क्लस्टर करती है।',
+      detail: '2 घंटे का एसएलए काउंटडाउन शुरू। प्लंबिंग रैपिड रिस्पांस क्रू को ऑटो-डिस्पैच अलर्ट।',
+      tag: 'डुप्लिकेट उन्मूलन',
+    },
+    {
+      title: '4. 3D प्रेषण व समाधान प्रमाण',
+      icon: 'view_in_ar',
+      badge: '3D स्थानिक ट्विन',
+      desc: 'तकनीशियन को 3D ट्विन पर सब-मीटर नेविगेशन मिलता है, वॉल्व ठीक करके कार्य पूर्णता की फोटो अपलोड करते हैं।',
+      detail: 'छात्र को फोटो प्रमाण के साथ तुरंत पुश सूचना मिलती है और 5-स्टार रेटिंग देते हैं।',
+      tag: 'सत्यापित समाधान',
+    },
+  ] : [
     {
       title: '1. Multimodal Intake',
       icon: 'photo_camera',
@@ -82,7 +117,28 @@ export default function IndexPage({
     },
   ];
 
-  const faqs = [
+  const faqs = lang === 'hi' ? [
+    {
+      q: 'कैंपसकनेक्ट अस्पष्ट या अधूरी शिकायतों को कैसे समाप्त करता है?',
+      a: 'सामान्य वेब फ़ॉर्म या अनौपचारिक समूहों के विपरीत, कैंपसकनेक्ट गूगल जेमिनी मल्टीमॉडल एआई का उपयोग करता है। जब कोई छात्र विवरण या फोटो जमा करता है, तो एआई गायब महत्वपूर्ण संदर्भ (जैसे सटीक मंजिल, कमरा संख्या, या बिजली का खतरा) को पहचानता है और टिकट बनने से पहले ही स्पष्टीकरण प्रश्न पूछता है।',
+    },
+    {
+      q: 'बायोमेट्रिक फेस लॉगिन उपयोगकर्ता की गोपनीयता की सुरक्षा कैसे करता है?',
+      a: 'कैंपसकनेक्ट क्लाइंट-साइड फेशियल लैंडमार्क मैचिंग का उपयोग करता है। बायोमेट्रिक फीचर वैक्टर सीधे ब्राउज़र पर उत्पन्न होते हैं। कोई भी कच्चा वीडियो कभी भी किसी बाहरी सर्वर पर अपलोड नहीं होता।',
+    },
+    {
+      q: 'यह प्रणाली रखरखाव कर्मचारियों को डुप्लिकेट शिकायतों से कैसे बचाती है?',
+      a: 'जब कई छात्र एक ही समस्या (जैसे छात्रावास में खराब वाटर कूलर या वाई-फाई बंद होना) देखते हैं, तो हमारा सिमेंटिक डुप्लिकेट इंजन विवरण और निर्देशांकों की तुलना करता है और उन्हें एक मुख्य टिकट से जोड़ देता है।',
+    },
+    {
+      q: 'क्या कैंपसकनेक्ट एक से अधिक विश्वविद्यालय परिसरों या कॉलेजों को संभाल सकता है?',
+      a: 'हाँ! कैंपसकनेक्ट में एक संस्थागत गेटवे आर्किटेक्चर है। प्रत्येक परिसर समर्पित कैंपस कोड (जैसे CAMPUS-2026, STANFORD, IITB) और पृथक डेटाबेस के साथ सुरक्षित रूप से काम करता है।',
+    },
+    {
+      q: 'यदि कोई छात्र टाइप नहीं करना चाहता या इंटरनेट धीमा है तो क्या होगा?',
+      a: 'छात्र 1-टैप वॉयस डिक्टेशन से बोल सकते हैं, कैमरे से फोटो खींचकर विज़न ऑटो-निरीक्षण करा सकते हैं, या कक्षाओं के दरवाजों पर लगे क्यूआर कोड को स्कैन कर सकते हैं।',
+    },
+  ] : [
     {
       q: 'How does CampusConnect eliminate vague or unhelpful complaint tickets?',
       a: 'Unlike traditional web forms or informal group chats, CampusConnect integrates Google Gemini Multimodal AI. When a student submits a brief description or photo, the AI detects missing crucial context (such as exact floor, room number, or whether an electrical hazard is present) and automatically asks focused clarification questions before the ticket is created.',
@@ -113,14 +169,14 @@ export default function IndexPage({
           <div className="index-session-banner-inner">
             <span className="index-session-info">
               <Symbol name="verified_user" filled />
-              Logged in as <strong>{user.name}</strong> ({user.role}) • {campusName}
+              {t('logged_in_as')} <strong>{user.name}</strong> ({user.role}) • {campusName}
             </span>
             <button
               type="button"
               className="button primary small"
               onClick={onEnterOverview}
             >
-              <span>Go to Overview Tab</span>
+              <span>{t('go_to_overview')}</span>
               <Symbol name="arrow_forward" />
             </button>
           </div>
@@ -136,19 +192,20 @@ export default function IndexPage({
             </div>
             <div className="index-brand-text">
               <span className="brand-name">CampusConnect</span>
-              <span className="brand-sub">Autonomous Facilities Platform</span>
+              <span className="brand-sub">{t('brand_sub')}</span>
             </div>
           </div>
 
           <nav className="index-nav-links" aria-label="Index page navigation">
-            <a href="#features">Features</a>
-            <a href="#pipeline">AI Engine</a>
-            <a href="#spatial-twin">3D Twin & QR</a>
-            <a href="#roles">Portals</a>
-            <a href="#faq">FAQ</a>
+            <a href="#features">{t('nav_features')}</a>
+            <a href="#pipeline">{t('nav_ai_engine')}</a>
+            <a href="#spatial-twin">{t('nav_3d_twin')}</a>
+            <a href="#roles">{t('nav_portals')}</a>
+            <a href="#faq">{t('nav_faq')}</a>
           </nav>
 
           <div className="index-nav-actions">
+            <LanguageToggle />
             <div className="index-campus-pill" title={`Institutional Gateway: ${campusCode}`}>
               <span className="live-dot" />
               <span className="campus-label">{campusCode}</span>
@@ -160,7 +217,7 @@ export default function IndexPage({
                 className="button primary index-cta-btn"
                 onClick={onEnterOverview}
               >
-                <span>Overview Tab</span>
+                <span>{t('overview_tab')}</span>
                 <Symbol name="space_dashboard" filled />
               </button>
             ) : (
@@ -171,7 +228,7 @@ export default function IndexPage({
                   onClick={() => onNavigateToLogin('signin')}
                 >
                   <Symbol name="login" />
-                  <span>Sign In</span>
+                  <span>{t('sign_in')}</span>
                 </button>
                 <button
                   type="button"
@@ -179,7 +236,7 @@ export default function IndexPage({
                   onClick={() => onNavigateToLogin('signup')}
                 >
                   <Symbol name="person_add" filled />
-                  <span>Get Started</span>
+                  <span>{t('get_started')}</span>
                 </button>
               </>
             )}
@@ -194,7 +251,7 @@ export default function IndexPage({
           <div className="index-hero-badge-row">
             <span className="index-pill-badge">
               <span className="pulse-beacon" />
-              Next-Gen Autonomous AI Facilities Platform • 2026 Edition
+              {t('hero_badge')}
             </span>
             <span className="index-campus-badge">
               <Symbol name="school" filled />
@@ -203,13 +260,11 @@ export default function IndexPage({
           </div>
 
           <h1 className="index-hero-title">
-            From Campus Complaints to <span className="highlight-text">Accountable Action.</span>
+            {t('hero_title_prefix')} <span className="highlight-text">{t('hero_title_highlight')}</span>
           </h1>
 
           <p className="index-hero-subtitle">
-            The next-generation facilities intelligence ecosystem connecting students, technicians, and university deans.
-            Featuring <strong>Multimodal Gemini AI</strong> for voice & vision triage, <strong>3D Spatial Digital Twins</strong> for
-            instant technician dispatch, and <strong>Zero-Trust Biometric Gateways</strong> for seamless campus security.
+            {t('hero_subtitle')}
           </p>
 
           <div className="index-hero-cta-group">
@@ -219,7 +274,7 @@ export default function IndexPage({
               onClick={() => onNavigateToLogin('signin')}
             >
               <Symbol name="rocket_launch" filled />
-              <span>Launch Campus Portal</span>
+              <span>{t('launch_campus_portal')}</span>
               <Symbol name="arrow_forward" />
             </button>
 
@@ -229,12 +284,12 @@ export default function IndexPage({
               onClick={() => onNavigateToLogin('signup')}
             >
               <Symbol name="badge" />
-              <span>Create Student Account</span>
+              <span>{t('create_student_account')}</span>
             </button>
 
             <a href="#pipeline" className="hero-text-link">
               <Symbol name="play_circle" />
-              <span>See How It Works</span>
+              <span>{t('see_how_it_works')}</span>
             </a>
           </div>
 
@@ -245,8 +300,8 @@ export default function IndexPage({
                 <Symbol name="timer" filled />
               </div>
               <div className="metric-data">
-                <strong className="metric-number">85% Faster</strong>
-                <span className="metric-caption">Resolution Turnaround (MTTR)</span>
+                <strong className="metric-number">{t('metric_faster')}</strong>
+                <span className="metric-caption">{t('metric_faster_desc')}</span>
               </div>
             </div>
 
@@ -255,8 +310,8 @@ export default function IndexPage({
                 <Symbol name="neurology" filled />
               </div>
               <div className="metric-data">
-                <strong className="metric-number">99.4% Accuracy</strong>
-                <span className="metric-caption">Multimodal Category & SLA Triage</span>
+                <strong className="metric-number">{t('metric_accuracy')}</strong>
+                <span className="metric-caption">{t('metric_accuracy_desc')}</span>
               </div>
             </div>
 
@@ -265,8 +320,8 @@ export default function IndexPage({
                 <Symbol name="view_in_ar" filled />
               </div>
               <div className="metric-data">
-                <strong className="metric-number">3D Digital Twin</strong>
-                <span className="metric-caption">Sub-meter Building Spatial Map</span>
+                <strong className="metric-number">{t('metric_twin')}</strong>
+                <span className="metric-caption">{t('metric_twin_desc')}</span>
               </div>
             </div>
 
@@ -275,8 +330,8 @@ export default function IndexPage({
                 <Symbol name="verified" filled />
               </div>
               <div className="metric-data">
-                <strong className="metric-number">100% Accountable</strong>
-                <span className="metric-caption">End-to-End Audit Trail</span>
+                <strong className="metric-number">{t('metric_accountable')}</strong>
+                <span className="metric-caption">{t('metric_accountable_desc')}</span>
               </div>
             </div>
           </div>
@@ -286,12 +341,9 @@ export default function IndexPage({
       {/* Problem vs Solution Comparison Section */}
       <section className="index-section comparison-section">
         <div className="section-head-centered">
-          <span className="eyebrow">The Campus Dilemma</span>
-          <h2>Why Traditional Maintenance Reporting Fails Modern Universities</h2>
-          <p>
-            Informal WhatsApp messages, verbal complaints, and clunky email chains leave students frustrated
-            and maintenance departments overwhelmed with duplicate, untracked requests.
-          </p>
+          <span className="eyebrow">{t('dilemma_eyebrow')}</span>
+          <h2>{t('dilemma_title')}</h2>
+          <p>{t('dilemma_desc')}</p>
         </div>
 
         <div className="comparison-grid">
@@ -301,65 +353,65 @@ export default function IndexPage({
                 <Symbol name="cancel" filled />
               </div>
               <div>
-                <h3>Traditional Legacy Methods</h3>
-                <span className="comparison-sub">Informal, Disorganized, Black-Box</span>
+                <h3>{t('legacy_methods_title')}</h3>
+                <span className="comparison-sub">{t('legacy_methods_sub')}</span>
               </div>
             </div>
             <ul className="comparison-list">
               <li>
                 <Symbol name="close" />
-                <span><strong>Unstructured Reports:</strong> "Water leaking somewhere" with zero location or severity details.</span>
+                <span>{t('legacy_point_1')}</span>
               </li>
               <li>
                 <Symbol name="close" />
-                <span><strong>Duplicate Ticket Chaos:</strong> 30 students reporting the same classroom air conditioner overload staff.</span>
+                <span>{t('legacy_point_2')}</span>
               </li>
               <li>
                 <Symbol name="close" />
-                <span><strong>Zero Student Visibility:</strong> Complaints vanish into an administrative black hole with no status updates.</span>
+                <span>{t('legacy_point_3')}</span>
               </li>
               <li>
                 <Symbol name="close" />
-                <span><strong>Manual Routing Bottlenecks:</strong> Staff spend hours sorting emails to identify which technician is on duty.</span>
+                <span>{t('legacy_point_4')}</span>
               </li>
               <li>
                 <Symbol name="close" />
-                <span><strong>Lost Accountability:</strong> No proof of fix, no timestamps, and no verification loop.</span>
+                <span>{t('legacy_point_5')}</span>
               </li>
             </ul>
           </div>
 
           <div className="comparison-card modern-card">
-            <div className="comparison-card-badge">CampusConnect Solution</div>
+            <div className="comparison-card-badge">CampusConnect</div>
             <div className="comparison-card-header">
               <div className="comparison-icon-good">
                 <Symbol name="check_circle" filled />
               </div>
               <div>
-                <h3>CampusConnect Autonomous Engine</h3>
-                <span className="comparison-sub">Multimodal AI, 3D Spatial, Transparent</span>
+                <h3>{t('solution_methods_title')}</h3>
+                <span className="comparison-sub">{t('solution_methods_sub')}</span>
               </div>
             </div>
             <ul className="comparison-list">
               <li>
                 <Symbol name="check" />
-                <span><strong>Multimodal Clarity:</strong> Voice dictation, camera photo auto-diagnosis, and QR room identification.</span>
+                <span>{t('solution_point_1')}</span>
               </li>
               <li>
                 <Symbol name="check" />
-                <span><strong>Semantic Duplicate Clustering:</strong> AI clusters nearby matching reports into a single actionable master ticket.</span>
+                <span>{t('solution_point_2')}</span>
               </li>
               <li>
                 <Symbol name="check" />
-                <span><strong>Live Real-Time Timeline:</strong> Students follow status from Submitted → Assigned → In-Progress → Resolved.</span>
+                <span>{t('solution_point_3')}</span>
               </li>
               <li>
                 <Symbol name="check" />
-                <span><strong>3D Spatial Dispatch:</strong> Technicians pinpoint exact building, floor, and room coordinates instantly.</span>
+                <span>{t('solution_point_4')}</span>
               </li>
               <li>
                 <Symbol name="check" />
-                <span><strong>Verified Resolution & CSAT:</strong> Mandatory completion photos and 5-star student satisfaction rating.</span>
+                <span>{t('solution_point_5')}</span>
               </li>
             </ul>
           </div>
@@ -369,11 +421,9 @@ export default function IndexPage({
       {/* Interactive AI Simulation Section */}
       <section id="pipeline" className="index-section pipeline-section">
         <div className="section-head-centered">
-          <span className="eyebrow">Autonomous Intelligence in Action</span>
-          <h2>Watch How Gemini AI Triages Campus Issues in Seconds</h2>
-          <p>
-            Experience our intelligent 4-step pipeline that transforms raw student input into verified, resolved maintenance tasks.
-          </p>
+          <span className="eyebrow">{t('pipeline_eyebrow')}</span>
+          <h2>{t('pipeline_title')}</h2>
+          <p>{t('pipeline_desc')}</p>
         </div>
 
         <div className="pipeline-interactive-box">
@@ -429,14 +479,14 @@ export default function IndexPage({
                   onClick={() => setActiveSimStep((prev) => (prev > 0 ? prev - 1 : 3))}
                 >
                   <Symbol name="chevron_left" />
-                  <span>Previous</span>
+                  <span>{t('stage_previous')}</span>
                 </button>
                 <button
                   type="button"
                   className="button primary small"
                   onClick={() => setActiveSimStep((prev) => (prev + 1) % 4)}
                 >
-                  <span>Next Stage</span>
+                  <span>{t('stage_next')}</span>
                   <Symbol name="chevron_right" />
                 </button>
               </div>
@@ -448,11 +498,9 @@ export default function IndexPage({
       {/* Deep-Dive Feature Pillars Section */}
       <section id="features" className="index-section features-pillar-section">
         <div className="section-head-centered">
-          <span className="eyebrow">Enterprise Architecture</span>
-          <h2>Engineered with Four Revolutionary Technological Pillars</h2>
-          <p>
-            CampusConnect blends cutting-edge artificial intelligence with physical campus realities.
-          </p>
+          <span className="eyebrow">{t('pillars_eyebrow')}</span>
+          <h2>{t('pillars_title')}</h2>
+          <p>{t('pillars_desc')}</p>
         </div>
 
         {/* Feature Tabs Selector */}
@@ -463,7 +511,7 @@ export default function IndexPage({
             onClick={() => setActiveFeatureTab('multimodal')}
           >
             <Symbol name="neurology" filled />
-            <span>Multimodal Gemini AI</span>
+            <span>{t('pillar_tab_multimodal')}</span>
           </button>
           <button
             type="button"
@@ -471,7 +519,7 @@ export default function IndexPage({
             onClick={() => setActiveFeatureTab('twin3d')}
           >
             <Symbol name="view_in_ar" filled />
-            <span>3D Twin & QR Codes</span>
+            <span>{t('pillar_tab_twin3d')}</span>
           </button>
           <button
             type="button"
@@ -479,7 +527,7 @@ export default function IndexPage({
             onClick={() => setActiveFeatureTab('biometric')}
           >
             <Symbol name="face" filled />
-            <span>Biometric Zero-Trust IAM</span>
+            <span>{t('pillar_tab_biometric')}</span>
           </button>
           <button
             type="button"
@@ -487,7 +535,7 @@ export default function IndexPage({
             onClick={() => setActiveFeatureTab('operations')}
           >
             <Symbol name="monitoring" filled />
-            <span>Operations Pulse & SLA</span>
+            <span>{t('pillar_tab_operations')}</span>
           </button>
         </div>
 
@@ -707,12 +755,9 @@ export default function IndexPage({
       {/* Stakeholder Portals Section */}
       <section id="roles" className="index-section roles-showcase-section">
         <div className="section-head-centered">
-          <span className="eyebrow">Tailored Role Experiences</span>
-          <h2>A Unified Platform Built for Every University Stakeholder</h2>
-          <p>
-            Whether you are a student reporting a faulty lab socket or the Dean evaluating quarterly facility expenditures,
-            CampusConnect delivers a purpose-built workspace.
-          </p>
+          <span className="eyebrow">{t('roles_eyebrow')}</span>
+          <h2>{t('roles_title')}</h2>
+          <p>{t('roles_desc')}</p>
         </div>
 
         <div className="roles-tabs-container">
@@ -723,7 +768,7 @@ export default function IndexPage({
               onClick={() => setActiveRoleTab('student')}
             >
               <Symbol name="school" filled />
-              <span>Student Portal</span>
+              <span>{t('role_student_portal')}</span>
             </button>
             <button
               type="button"
@@ -731,7 +776,7 @@ export default function IndexPage({
               onClick={() => setActiveRoleTab('technician')}
             >
               <Symbol name="engineering" filled />
-              <span>Staff & Technician Hub</span>
+              <span>{t('role_technician_hub')}</span>
             </button>
             <button
               type="button"
@@ -739,7 +784,7 @@ export default function IndexPage({
               onClick={() => setActiveRoleTab('admin')}
             >
               <Symbol name="admin_panel_settings" filled />
-              <span>Dean & Executive Cockpit</span>
+              <span>{t('role_dean_cockpit')}</span>
             </button>
           </div>
 
@@ -914,9 +959,9 @@ export default function IndexPage({
       {/* FAQ Section */}
       <section id="faq" className="index-section faq-section">
         <div className="section-head-centered">
-          <span className="eyebrow">Got Questions?</span>
-          <h2>Frequently Asked Questions</h2>
-          <p>Everything you need to know about implementing and using CampusConnect.</p>
+          <span className="eyebrow">{t('faq_eyebrow')}</span>
+          <h2>{t('faq_title')}</h2>
+          <p>{t('faq_desc')}</p>
         </div>
 
         <div className="faq-accordion-list">
@@ -950,12 +995,9 @@ export default function IndexPage({
       {/* High-Conversion Footer CTA Banner */}
       <section className="index-cta-banner">
         <div className="cta-banner-content">
-          <div className="cta-badge">Transform Your University Operations</div>
-          <h2>Ready to Bring Accountable Action to Your Campus?</h2>
-          <p>
-            Join the smart campus revolution. Experience seamless multimodal reporting, 3D twin dispatch,
-            and complete operational transparency.
-          </p>
+          <div className="cta-badge">{t('cta_banner_badge')}</div>
+          <h2>{t('cta_banner_title')}</h2>
+          <p>{t('cta_banner_desc')}</p>
 
           <div className="cta-button-row">
             <button
@@ -964,7 +1006,7 @@ export default function IndexPage({
               onClick={() => onNavigateToLogin('signin')}
             >
               <Symbol name="login" filled />
-              <span>Enter Campus Portal</span>
+              <span>{t('enter_campus_portal')}</span>
               <Symbol name="arrow_forward" />
             </button>
 
@@ -974,7 +1016,7 @@ export default function IndexPage({
               onClick={() => onNavigateToLogin('signup')}
             >
               <Symbol name="person_add" />
-              <span>Create Account</span>
+              <span>{t('create_account')}</span>
             </button>
           </div>
         </div>
@@ -989,33 +1031,33 @@ export default function IndexPage({
             </div>
             <div>
               <strong className="footer-title">CampusConnect</strong>
-              <p className="footer-tagline">From Campus Complaints to Accountable Action.</p>
+              <p className="footer-tagline">{t('hero_title_prefix')} {t('hero_title_highlight')}</p>
             </div>
           </div>
 
           <div className="footer-links-group">
             <div className="footer-col">
-              <h4>Platform</h4>
-              <a href="#pipeline">Multimodal AI</a>
-              <a href="#features">Features</a>
-              <a href="#roles">Portals</a>
-              <a href="#faq">FAQ</a>
+              <h4>{t('nav_portals')}</h4>
+              <a href="#pipeline">{t('nav_ai_engine')}</a>
+              <a href="#features">{t('nav_features')}</a>
+              <a href="#roles">{t('nav_portals')}</a>
+              <a href="#faq">{t('nav_faq')}</a>
             </div>
             <div className="footer-col">
               <h4>Security & IAM</h4>
               <button type="button" className="footer-link-btn" onClick={() => onNavigateToLogin('signin')}>
-                Biometric Gateway
+                {t('biometric_gateway_title')}
               </button>
               <button type="button" className="footer-link-btn" onClick={() => onNavigateToLogin('signup')}>
-                Student Registration
+                {t('create_student_account')}
               </button>
               <span className="footer-static-link">Zero-Trust RBAC</span>
             </div>
             <div className="footer-col">
-              <h4>Institution</h4>
+              <h4>Language / भाषा</h4>
+              <LanguageToggle className="pill-light" />
               <span className="footer-static-link">Code: {campusCode}</span>
               <span className="footer-static-link">Campus: {campusName}</span>
-              <span className="footer-static-link">Version 2.4-AI</span>
             </div>
           </div>
         </div>
@@ -1027,7 +1069,7 @@ export default function IndexPage({
             className="back-to-top-btn"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           >
-            <span>Back to top</span>
+            <span>{t('back_to_top')}</span>
             <Symbol name="arrow_upward" />
           </button>
         </div>

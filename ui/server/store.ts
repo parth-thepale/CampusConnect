@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import type { CampusConfig, Category, DuplicateCandidate, Metrics, ProblemAnalytics, Role, SessionUser, StudentFeedback, Ticket, TicketEvent, TicketStatus } from '../src/types.js';
+import type { CampusConfig, CampusIdRecord, Category, DuplicateCandidate, Metrics, ProblemAnalytics, Role, SessionUser, StudentFeedback, Ticket, TicketEvent, TicketStatus } from '../src/types.js';
 
 const databasePath = process.env.DATABASE_PATH ?? './data/campusconnect.db';
 mkdirSync(dirname(databasePath), { recursive: true });
@@ -111,7 +111,23 @@ export function initStore() {
       qr_payload TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS campus_ids (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      created_at TEXT NOT NULL
+    );
   `);
+
+  if ((db.prepare('SELECT COUNT(*) AS count FROM campus_ids').get() as { count: number }).count === 0) {
+    const insertId = db.prepare('INSERT OR IGNORE INTO campus_ids (id, code, name, active, created_by, created_at) VALUES (?, ?, ?, 1, ?, ?)');
+    const ts = now();
+    insertId.run('cid-campus2026', 'CAMPUS-2026', 'CampusConnect Central University', 'system', ts);
+    insertId.run('cid-cc2026', 'CC-2026', 'CampusConnect Fast Gateway', 'system', ts);
+    insertId.run('cid-standard', 'CAMPUS2026', 'CampusConnect Standard Portal', 'system', ts);
+  }
 
   try { db.exec('ALTER TABLE tickets ADD COLUMN photoData TEXT;'); } catch { /* column exists */ }
   try { db.exec('ALTER TABLE users ADD COLUMN face_data TEXT;'); } catch { /* column exists */ }
@@ -385,6 +401,34 @@ export function getCampusConfig(): CampusConfig {
   };
 }
 
+export function normalizeCampusCode(code?: string): string {
+  return (code ?? '').trim().toUpperCase().replace(/[\s\-_]/g, '');
+}
+
+export function listCampusIds(): CampusIdRecord[] {
+  type Row = { id: string; code: string; name: string; active: number; created_by: string | null; created_at: string };
+  const rows = db.prepare('SELECT id, code, name, active, created_by, created_at FROM campus_ids WHERE active = 1 ORDER BY created_at ASC').all() as unknown as Row[];
+  return rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    active: Boolean(r.active),
+    createdBy: r.created_by ?? undefined,
+    createdAt: r.created_at,
+  }));
+}
+
+export function addCampusId(code: string, name?: string, createdBy?: string): CampusIdRecord {
+  const cleanCode = code.trim().toUpperCase();
+  if (!cleanCode) throw new Error('Campus Code cannot be empty.');
+  const id = `cid-${cleanCode.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now().toString(36)}`;
+  const campusName = (name ?? '').trim() || `Campus Division (${cleanCode})`;
+  const createdAt = now();
+  db.prepare('INSERT OR REPLACE INTO campus_ids (id, code, name, active, created_by, created_at) VALUES (?, ?, ?, 1, ?, ?)')
+    .run(id, cleanCode, campusName, createdBy ?? null, createdAt);
+  return { id, code: cleanCode, name: campusName, active: true, createdAt, createdBy };
+}
+
 export function saveCampusConfig(code?: string, name?: string, adminEmail?: string): CampusConfig {
   const existing = getCampusConfig();
   const nextCode = (code ? code.trim().toUpperCase() : existing.code) || 'CAMPUS-2026';
@@ -395,6 +439,10 @@ export function saveCampusConfig(code?: string, name?: string, adminEmail?: stri
 
   db.prepare('INSERT OR REPLACE INTO campus_config (id, code, name, admin_email, qr_payload, created_at) VALUES (?, ?, ?, ?, ?, ?)')
     .run('main', nextCode, nextName, nextAdmin, qrPayload, createdAt);
+
+  // If changing configuration code to a new custom code, synchronize active state in campus_ids
+  db.prepare('UPDATE campus_ids SET active = 0 WHERE code != ?').run(nextCode);
+  addCampusId(nextCode, nextName, nextAdmin);
 
   return {
     code: nextCode,
@@ -407,11 +455,19 @@ export function saveCampusConfig(code?: string, name?: string, adminEmail?: stri
 }
 
 export function verifyCampusCode(code?: string) {
+  const cleaned = (code ?? '').trim();
+  if (!cleaned) {
+    throw new Error('Invalid or missing Campus Code. Please enter valid institutional code or scan campus QR pass.');
+  }
+  const norm = normalizeCampusCode(cleaned);
   const cfg = getCampusConfig();
-  const expected = (cfg.code || 'CAMPUS-2026').toUpperCase();
-  const cleaned = (code ?? '').trim().toUpperCase();
-  if (!cleaned || cleaned !== expected) {
-    throw new Error(`Invalid or missing Campus Code. Please enter valid institutional code (e.g. ${expected}) or scan campus QR pass.`);
+  if (cfg.code && normalizeCampusCode(cfg.code) === norm) {
+    return true;
+  }
+  const ids = listCampusIds();
+  const matched = ids.some((r) => r.active && normalizeCampusCode(r.code) === norm);
+  if (!matched) {
+    throw new Error(`Invalid or missing Campus Code. Please enter valid institutional code (e.g. ${cfg.code || 'CAMPUS-2026'}) or scan campus QR pass.`);
   }
   return true;
 }

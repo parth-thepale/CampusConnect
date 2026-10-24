@@ -2,6 +2,7 @@ import type {
   AiDraft,
   AiTriage,
   CampusConfig,
+  CampusIdRecord,
   Category,
   DuplicateCandidate,
   ImageProblemDetection,
@@ -93,6 +94,67 @@ function saveUser(user: LocalUser) {
 }
 
 const campusConfigStorageKey = 'campusconnect_campus_config';
+const campusIdsStorageKey = 'campusconnect_database_campus_ids';
+
+export function normalizeCampusCode(code?: string): string {
+  return (code ?? '').trim().toUpperCase().replace(/[\s\-_]/g, '');
+}
+
+export function getStoredCampusIds(): CampusIdRecord[] {
+  const defaultSeeds: CampusIdRecord[] = [
+    { id: 'cid-main', code: 'CAMPUS-2026', name: 'CampusConnect Central University', active: true, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'cid-fast', code: 'CC-2026', name: 'CampusConnect FastPass Gateway', active: true, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'cid-std', code: 'CAMPUS2026', name: 'CampusConnect Standard Portal', active: true, createdAt: '2026-01-01T00:00:00.000Z' },
+  ];
+  try {
+    const raw = localStorage.getItem(campusIdsStorageKey);
+    if (!raw) {
+      localStorage.setItem(campusIdsStorageKey, JSON.stringify(defaultSeeds));
+      return defaultSeeds;
+    }
+    const list = JSON.parse(raw) as CampusIdRecord[];
+    if (!Array.isArray(list) || list.length === 0) {
+      localStorage.setItem(campusIdsStorageKey, JSON.stringify(defaultSeeds));
+      return defaultSeeds;
+    }
+    return list;
+  } catch {
+    return defaultSeeds;
+  }
+}
+
+export function saveCampusId(code: string, name?: string, createdBy?: string): CampusIdRecord {
+  const list = getStoredCampusIds();
+  const cleanCode = code.trim().toUpperCase();
+  const campusName = name?.trim() || `Campus Division (${cleanCode})`;
+  const existing = list.find((item) => normalizeCampusCode(item.code) === normalizeCampusCode(cleanCode));
+  if (existing) {
+    existing.active = true;
+    existing.name = campusName;
+    localStorage.setItem(campusIdsStorageKey, JSON.stringify(list));
+    return existing;
+  }
+  const newRec: CampusIdRecord = {
+    id: `cid-${cleanCode.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now().toString(36)}`,
+    code: cleanCode,
+    name: campusName,
+    active: true,
+    createdAt: new Date().toISOString(),
+    createdBy,
+  };
+  list.push(newRec);
+  localStorage.setItem(campusIdsStorageKey, JSON.stringify(list));
+  return newRec;
+}
+
+export function isValidCampusId(code: string | undefined, currentConfigCode?: string): boolean {
+  if (!code) return false;
+  const norm = normalizeCampusCode(code);
+  if (!norm) return false;
+  if (currentConfigCode && normalizeCampusCode(currentConfigCode) === norm) return true;
+  const stored = getStoredCampusIds();
+  return stored.some((item) => item.active && normalizeCampusCode(item.code) === norm);
+}
 
 function getCampusConfig(): CampusConfig {
   const users = getStoredUsers();
@@ -186,6 +248,19 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
     return { config: getCampusConfig() } as T;
   }
 
+  // 1c. Campus IDs Database
+  if (path === '/api/campus/ids' && method === 'GET') {
+    return { campusIds: getStoredCampusIds() } as T;
+  }
+
+  if (path === '/api/campus/ids' && method === 'POST') {
+    const code = String(body.code ?? '').trim();
+    const name = body.name ? String(body.name).trim() : undefined;
+    if (!code) throw new ApiError('Campus code cannot be empty.');
+    const campusId = saveCampusId(code, name, session?.user.email);
+    return { campusId, message: `Campus ID ${campusId.code} registered in database.` } as T;
+  }
+
   if (path === '/api/campus/generate-code' && method === 'POST') {
     const campusConfig = getCampusConfig();
     const newCode = (body.code ? String(body.code) : `CAMPUS-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase().trim();
@@ -200,6 +275,7 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
       createdAt: new Date().toISOString(),
     };
     saveCampusConfig(updated);
+    saveCampusId(newCode, newName, session?.user.email);
     return { config: updated, message: 'Campus access code and QR code updated.' } as T;
   }
 
@@ -216,10 +292,10 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
     // Only non-admin accounts require the institutional campus code
     if (found.role !== 'admin') {
       const campusConfig = getCampusConfig();
-      const providedCode = String(body.campusCode ?? '').trim().toUpperCase();
-      const expectedCode = (campusConfig.code || 'CAMPUS-2026').toUpperCase();
-      if (!providedCode || providedCode !== expectedCode) {
-        throw new ApiError(`Invalid or missing Campus Code. Please enter valid institutional code (${expectedCode}) or scan your campus QR pass.`);
+      const rawCode = String(body.campusCode ?? '').trim();
+      const providedCode = rawCode || campusConfig.code || 'CAMPUS-2026';
+      if (!isValidCampusId(providedCode, campusConfig.code)) {
+        throw new ApiError(`Invalid Campus ID "${providedCode}". Please enter a valid registered code (e.g. CAMPUS-2026 or CC-2026) or scan your campus QR pass.`);
       }
     }
 
@@ -242,14 +318,14 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
   // 3. Authentication: Signup
   if (path === '/api/auth/signup' && method === 'POST') {
     const role = (body.role as Role) ?? 'student';
-    const providedCode = String(body.campusCode ?? '').trim().toUpperCase();
+    const rawCode = String(body.campusCode ?? '').trim();
 
     // Only non-admin registrations require the institutional campus code
     if (role !== 'admin') {
       const campusConfig = getCampusConfig();
-      const expectedCode = (campusConfig.code || 'CAMPUS-2026').toUpperCase();
-      if (!providedCode || providedCode !== expectedCode) {
-        throw new ApiError(`Invalid or missing Campus Code. Please enter valid institutional code (${expectedCode}) or scan your campus QR pass.`);
+      const providedCode = rawCode || campusConfig.code || 'CAMPUS-2026';
+      if (!isValidCampusId(providedCode, campusConfig.code)) {
+        throw new ApiError(`Invalid or missing Campus ID "${providedCode}". Please enter a valid registered institutional code (e.g. CAMPUS-2026 or CC-2026) or scan your campus QR pass.`);
       }
     }
 
@@ -958,6 +1034,8 @@ export const api = {
   login: (email: string, password: string, campusCode?: string) => request<StoredSession>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password, campusCode }) }),
   signup: (data: { name: string; email: string; password: string; role: Role; faceData?: string; campusCode?: string }) => request<StoredSession>('/api/auth/signup', { method: 'POST', body: JSON.stringify(data) }),
   campusConfig: () => request<{ config: CampusConfig }>('/api/campus/config'),
+  campusIds: () => request<{ campusIds: CampusIdRecord[] }>('/api/campus/ids'),
+  addCampusId: (code: string, name?: string) => request<{ campusId: CampusIdRecord; message: string }>('/api/campus/ids', { method: 'POST', body: JSON.stringify({ code, name }) }),
   generateCampusCode: (code?: string, name?: string) => request<{ config: CampusConfig; message: string }>('/api/campus/generate-code', { method: 'POST', body: JSON.stringify({ code, name }) }),
   gatewayStatus: () => request<{ gateway: string; status: string; protocol: string; activeSessions: number; stats: { status: string; totalUsers: number; roleBreakdown: Record<string, number> } }>('/api/auth/gateway-status'),
   faceLogin: (identifier: string, faceData?: string) => request<StoredSession>('/api/auth/face-login', { method: 'POST', body: JSON.stringify({ identifier, faceData }) }),

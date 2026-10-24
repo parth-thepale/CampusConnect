@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { analyzeComplaint, autoWriteText, chatWithAi, compareCandidates, detectProblemFromImage, operationsPulse, triageTicket } from './ai.js';
-import { authenticateFace, authenticateLocal, createTicket, decideDuplicate, detailedAnalytics, findCandidates, gatewayStats, getAllTickets, getCampusConfig, getTicket, initStore, listEnrolledUsers, listTickets, metrics, registerUser, routingRules, saveCampusConfig, submitStudentFeedback, updateTicket, updateUserFace, verifyCampusCode } from './store.js';
+import { addCampusId, authenticateFace, authenticateLocal, createTicket, decideDuplicate, detailedAnalytics, findCandidates, gatewayStats, getAllTickets, getCampusConfig, getTicket, initStore, listCampusIds, listEnrolledUsers, listTickets, metrics, registerUser, routingRules, saveCampusConfig, submitStudentFeedback, updateTicket, updateUserFace, verifyCampusCode } from './store.js';
 import { categories, statuses, type Category, type SessionUser, type TicketStatus } from '../src/types.js';
 
 initStore();
@@ -103,6 +103,18 @@ app.get('/api/auth/gateway-status', (_req, res) => {
 // Campus Configuration & QR Gateway
 app.get('/api/campus/config', (_req, res) => {
   res.json({ config: getCampusConfig() });
+});
+
+app.get('/api/campus/ids', (_req, res) => {
+  res.json({ campusIds: listCampusIds() });
+});
+
+app.post('/api/campus/ids', requireAuth, requireRole('admin'), (req, res) => {
+  const schema = z.object({ code: z.string().min(1), name: z.string().optional() });
+  const input = valid(schema, req.body, res);
+  if (!input) return;
+  const created = addCampusId(input.code, input.name, req.user!.email);
+  res.status(201).json({ campusId: created, message: `Campus ID ${created.code} registered in database.` });
 });
 
 app.post('/api/campus/generate-code', requireAuth, requireRole('admin'), (req, res) => {

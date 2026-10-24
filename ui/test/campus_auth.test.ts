@@ -23,6 +23,8 @@ const {
   listTickets,
   createTicket,
   detailedAnalytics,
+  addCampusId,
+  listCampusIds,
 } = await import('../server/store.js');
 
 test('1. Initialize isolated campus store with zero placeholder tickets', () => {
@@ -195,4 +197,16 @@ test('12. Role-dependent Campus Code requirement: Admin bypass vs Student/Staff 
   assert.throws(() => verifyCampusCode(''), /Invalid or missing Campus Code/);
   assert.throws(() => verifyCampusCode('WRONG-CODE'), /Invalid or missing Campus Code/);
   assert.equal(verifyCampusCode('CAMPUS-2026'), true, 'Student with valid code passes');
+});
+
+test('13. Database Campus ID store and multi-format normalization', () => {
+  addCampusId('LABS-2026', 'Engineering Research Laboratories', 'admin@campusconnect.local');
+  // Normalized variations should all pass
+  assert.equal(verifyCampusCode('labs-2026'), true);
+  assert.equal(verifyCampusCode('LABS2026'), true);
+  assert.equal(verifyCampusCode('  labs 2026  '), true);
+
+  const allIds = listCampusIds();
+  assert.ok(allIds.length >= 1);
+  assert.ok(allIds.some((i) => i.code === 'LABS-2026'));
 });

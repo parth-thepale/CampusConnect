@@ -3,6 +3,7 @@ import { api, getStoredSession, storeSession, type StoredSession } from './api';
 import {
   type AiTriage,
   type CampusConfig,
+  type CampusIdRecord,
   type Category,
   type OpsPulse,
   type ProblemAnalytics,
@@ -802,6 +803,19 @@ function AdminCampusModal({
   const [editingCode, setEditingCode] = useState(config.code);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [dbCampusIds, setDbCampusIds] = useState<CampusIdRecord[]>([]);
+  const [newCode, setNewCode] = useState('');
+  const [newName, setNewName] = useState('');
+
+  const loadIds = useCallback(() => {
+    api.campusIds()
+      .then((res) => setDbCampusIds(res.campusIds || []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadIds();
+  }, [loadIds]);
 
   const handleRegenerate = async () => {
     setSaving(true);
@@ -809,11 +823,26 @@ function AdminCampusModal({
     try {
       const res = await api.generateCampusCode(editingCode);
       onUpdate(res.config);
+      loadIds();
       setMsg('Campus access code and QR gateway updated successfully!');
     } catch {
       setMsg('Failed to update campus code.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAddId = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newCode.trim()) return;
+    try {
+      await api.addCampusId(newCode.trim().toUpperCase(), newName.trim() || undefined);
+      setNewCode('');
+      setNewName('');
+      loadIds();
+      setMsg(`Campus ID ${newCode.trim().toUpperCase()} stored in database.`);
+    } catch {
+      setMsg('Failed to add campus ID.');
     }
   };
 
@@ -835,7 +864,7 @@ function AdminCampusModal({
 
           <div style={{ width: '100%', textAlign: 'left', display: 'grid', gap: '8px' }}>
             <label style={{ fontSize: '12px', fontWeight: 700, color: '#a9f6ef' }}>
-              Custom Campus Code (Students & Staff Access Key)
+              Primary Campus Code (Institutional Gateway Pass)
               <input
                 type="text"
                 value={editingCode}
@@ -845,7 +874,7 @@ function AdminCampusModal({
               />
             </label>
             <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>
-              Students and staff must enter this code or scan this QR pass when creating an account or logging in.
+              Institutional access code verified against the database for student and staff registrations.
             </p>
             {msg && <p style={{ margin: 0, fontSize: '12px', color: '#86efac', fontWeight: 600 }}>{msg}</p>}
             <button
@@ -857,6 +886,33 @@ function AdminCampusModal({
             >
               {saving ? 'Updating Gateway…' : 'Update & Re-encode QR Pass'}
             </button>
+
+            {/* Database Campus IDs Management */}
+            <div style={{ marginTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '12px', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#e2e8f0' }}>Database Institutional IDs ({dbCampusIds.length})</span>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>Active in SQLite / Cloud Store</span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+                {dbCampusIds.map((cid) => (
+                  <span key={cid.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', background: 'rgba(20,184,166,0.15)', color: '#2dd4bf', border: '1px solid rgba(20,184,166,0.3)', fontSize: '11px', fontFamily: 'monospace', fontWeight: 700 }}>
+                    <Symbol name="verified" /> {cid.code}
+                  </span>
+                ))}
+              </div>
+              <form onSubmit={handleAddId} style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="text"
+                  placeholder="Add ID (e.g. LAB-2026)"
+                  value={newCode}
+                  onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+                  style={{ flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.3)', color: 'white', fontSize: '11px', fontFamily: 'monospace' }}
+                />
+                <button type="submit" className="button secondary" style={{ fontSize: '11px', padding: '4px 10px' }}>
+                  + Add to DB
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       </div>
@@ -891,6 +947,7 @@ function Login({
     return 'CAMPUS-2026';
   });
   const [campusConfig, setCampusConfig] = useState<CampusConfig | null>(null);
+  const [validCampusIds, setValidCampusIds] = useState<string[]>(['CAMPUS-2026', 'CC-2026', 'CAMPUS2026']);
 
   // Sign In state
   const [signinRole, setSigninRole] = useState<Role>('student');
@@ -919,10 +976,25 @@ function Login({
       })
       .catch(() => {});
 
+    api.campusIds()
+      .then((res) => {
+        if (res.campusIds && res.campusIds.length > 0) {
+          setValidCampusIds(res.campusIds.map((c) => c.code));
+        }
+      })
+      .catch(() => {});
+
     api.gatewayStatus()
       .then((data) => setGatewayInfo({ totalUsers: data.stats.totalUsers, status: data.status }))
       .catch(() => setGatewayInfo({ status: 'ONLINE (STANDALONE)' }));
   }, []);
+
+  const isCodeValid = (code: string) => {
+    const norm = code.trim().toUpperCase().replace(/[\s\-_]/g, '');
+    if (!norm) return true;
+    if (campusConfig?.code && campusConfig.code.trim().toUpperCase().replace(/[\s\-_]/g, '') === norm) return true;
+    return validCampusIds.some((id) => id.trim().toUpperCase().replace(/[\s\-_]/g, '') === norm);
+  };
 
   const handleSignin = async (event: FormEvent) => {
     event.preventDefault();
@@ -1118,15 +1190,16 @@ function Login({
                     type="text"
                     value={campusCode}
                     onChange={(event) => setCampusCode(event.target.value.toUpperCase())}
-                    placeholder={campusConfig?.code || 'CAMPUS-2026'}
-                    required
+                    placeholder="CAMPUS-2026"
+                    autoComplete="off"
                   />
-                  {campusCode.trim().toUpperCase() === (campusConfig?.code || 'CAMPUS-2026').toUpperCase() ? (
-                    <span className="code-valid-pill"><Symbol name="check" /> Valid</span>
+                  {isCodeValid(campusCode) ? (
+                    <span className="code-valid-pill"><Symbol name="check" /> Valid ID</span>
                   ) : (
-                    <span className="code-hint-pill">Scan QR / Required</span>
+                    <span className="code-hint-pill">Unrecognized ID</span>
                   )}
                 </div>
+                <span className="field-hint">Database Verified Institutional ID: CAMPUS-2026 or CC-2026</span>
               </label>
             )}
 
@@ -1244,13 +1317,16 @@ function Login({
                     type="text"
                     value={campusCode}
                     onChange={(event) => setCampusCode(event.target.value.toUpperCase())}
-                    placeholder={campusConfig?.code || 'CAMPUS-2026'}
-                    required
+                    placeholder="CAMPUS-2026"
+                    autoComplete="off"
                   />
-                  {campusCode.trim().toUpperCase() === (campusConfig?.code || 'CAMPUS-2026').toUpperCase() && (
-                    <span className="code-valid-pill"><Symbol name="check" /> Valid</span>
+                  {isCodeValid(campusCode) ? (
+                    <span className="code-valid-pill"><Symbol name="check" /> Valid ID</span>
+                  ) : (
+                    <span className="code-hint-pill">Unrecognized ID</span>
                   )}
                 </div>
+                <span className="field-hint">Database Verified Institutional ID: CAMPUS-2026 or CC-2026</span>
               </label>
             )}
 
