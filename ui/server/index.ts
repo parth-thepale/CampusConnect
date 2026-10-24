@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { analyzeComplaint, autoWriteText, chatWithAi, compareCandidates, detectProblemFromImage, operationsPulse, triageTicket } from './ai.js';
-import { authenticateFace, authenticateLocal, createTicket, decideDuplicate, detailedAnalytics, findCandidates, gatewayStats, getAllTickets, getTicket, initStore, listTickets, metrics, registerUser, routingRules, submitStudentFeedback, updateTicket } from './store.js';
+import { authenticateFace, authenticateLocal, createTicket, decideDuplicate, detailedAnalytics, findCandidates, gatewayStats, getAllTickets, getCampusConfig, getTicket, initStore, listEnrolledUsers, listTickets, metrics, registerUser, routingRules, saveCampusConfig, submitStudentFeedback, updateTicket, updateUserFace, verifyCampusCode } from './store.js';
 import { categories, statuses, type Category, type SessionUser, type TicketStatus } from '../src/types.js';
 
 initStore();
@@ -49,15 +49,27 @@ function routeId(req: Request) {
   return Array.isArray(value) ? value[0] : value ?? '';
 }
 
-const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+  campusCode: z.string().optional(),
+});
 const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   role: z.enum(['student', 'staff', 'admin']),
   faceData: z.string().optional(),
+  campusCode: z.string().optional(),
 });
 const faceLoginSchema = z.object({ identifier: z.string().min(1), faceData: z.string().optional() });
+const campusGenSchema = z.object({
+  code: z.string().min(2).max(24).optional(),
+  name: z.string().min(2).max(100).optional(),
+});
+const enrollFaceSchema = z.object({
+  faceData: z.string().min(10),
+});
 const analyzeSchema = z.object({ description: z.string().min(4).max(1600), locationId: z.string().max(100).optional(), photo: z.object({ data: z.string().max(8_000_000), mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']) }).optional() });
 const imageDetectSchema = z.object({
   photo: z.object({
@@ -88,30 +100,71 @@ app.get('/api/auth/gateway-status', (_req, res) => {
   });
 });
 
+// Campus Configuration & QR Gateway
+app.get('/api/campus/config', (_req, res) => {
+  res.json({ config: getCampusConfig() });
+});
+
+app.post('/api/campus/generate-code', requireAuth, requireRole('admin'), (req, res) => {
+  const input = valid(campusGenSchema, req.body, res);
+  if (!input) return;
+  const config = saveCampusConfig(input.code, input.name, req.user!.email);
+  res.json({ config, message: `Campus gateway bound to code ${config.code}.` });
+});
+
+app.get('/api/auth/enrolled-users', (_req, res) => {
+  res.json({ users: listEnrolledUsers() });
+});
+
+app.post('/api/auth/enroll-face', requireAuth, (req, res) => {
+  const input = valid(enrollFaceSchema, req.body, res);
+  if (!input) return;
+  const updated = updateUserFace(req.user!, input.faceData);
+  req.user = updated;
+  for (const [token, user] of sessions.entries()) {
+    if (user.uid === updated.uid) {
+      sessions.set(token, updated);
+    }
+  }
+  res.json({ user: updated, message: 'Webcam biometric face key successfully registered in campus gateway.' });
+});
+
 app.post('/api/auth/signup', (req, res) => {
   const input = valid(signupSchema, req.body, res);
   if (!input) return;
   try {
+    const cfg = getCampusConfig();
+    // Allow uninitialized gateway if founding admin is signing up
+    if (cfg.isInitialized || input.role !== 'admin') {
+      verifyCampusCode(input.campusCode);
+    }
     const user = registerUser(input);
     const token = randomBytes(32).toString('hex');
     sessions.set(token, user);
     res.status(201).json({ token, user, message: 'Account successfully registered in campus gateway.' });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Registration failed.';
-    res.status(409).json({ error: { code: 'REGISTRATION_FAILED', message } });
+    res.status(400).json({ error: { code: 'REGISTRATION_FAILED', message } });
   }
 });
 
 app.post('/api/auth/login', (req, res) => {
   const input = valid(loginSchema, req.body, res); if (!input) return;
+  try {
+    verifyCampusCode(input.campusCode);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Invalid campus code.';
+    return res.status(400).json({ error: { code: 'INVALID_CAMPUS_CODE', message } });
+  }
   const user = authenticateLocal(input.email, input.password);
   if (!user) return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.' } });
   const token = randomBytes(32).toString('hex'); sessions.set(token, user);
   res.json({ token, user });
 });
+
 app.post('/api/auth/face-login', (req, res) => {
   const input = valid(faceLoginSchema, req.body, res); if (!input) return;
-  const user = authenticateFace(input.identifier);
+  const user = authenticateFace(input.identifier, input.faceData);
   if (!user) return res.status(401).json({ error: { code: 'BIOMETRIC_FAILED', message: 'Facial identity was not recognized. Please try again or use password.' } });
   const token = randomBytes(32).toString('hex'); sessions.set(token, user);
   res.json({ token, user, method: 'facial_recognition' });

@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import type { Category, DuplicateCandidate, Metrics, ProblemAnalytics, Role, SessionUser, StudentFeedback, Ticket, TicketEvent, TicketStatus } from '../src/types.js';
+import type { CampusConfig, Category, DuplicateCandidate, Metrics, ProblemAnalytics, Role, SessionUser, StudentFeedback, Ticket, TicketEvent, TicketStatus } from '../src/types.js';
 
 const databasePath = process.env.DATABASE_PATH ?? './data/campusconnect.db';
 mkdirSync(dirname(databasePath), { recursive: true });
@@ -43,10 +43,6 @@ function addEvent(ticketId: string, event: TicketEvent) {
     .run(event.id, ticketId, event.type, event.actor, event.at, event.message);
 }
 
-function seededEvent(id: string, ticketId: string, type: TicketEvent['type'], actor: string, at: string, message: string): TicketEvent {
-  void ticketId;
-  return { id, type, actor, at, message };
-}
 
 export function initStore() {
   db.exec(`
@@ -107,21 +103,19 @@ export function initStore() {
       reasons TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS campus_config (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      admin_email TEXT NOT NULL,
+      qr_payload TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
 
   try { db.exec('ALTER TABLE tickets ADD COLUMN photoData TEXT;'); } catch { /* column exists */ }
   try { db.exec('ALTER TABLE users ADD COLUMN face_data TEXT;'); } catch { /* column exists */ }
   try { db.exec('ALTER TABLE tickets ADD COLUMN studentFeedback TEXT;'); } catch { /* column exists */ }
-
-  const sampleTapSvg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect width="100%" height="100%" fill="%23e8f4f8"/><path d="M120,180 L280,180 L280,240 L230,240 L230,210 L120,210 Z" fill="%23718096"/><rect x="230" y="240" width="50" height="30" fill="%234a5568"/><circle cx="255" cy="310" r="14" fill="%233182ce"/><path d="M255,280 C245,295 245,315 255,325 C265,315 265,295 255,280 Z" fill="%233182ce"/><ellipse cx="255" cy="370" rx="90" ry="18" fill="%2363b3ed" opacity="0.6"/><text x="300" y="80" font-family="sans-serif" font-size="20" font-weight="bold" fill="%232d3748">Block B · Floor 2 Washroom</text><text x="300" y="115" font-family="sans-serif" font-size="14" fill="%23718096">Reported by Dev Shah</text><rect x="290" y="140" width="280" height="50" rx="8" fill="%23fed7d7"/><text x="305" y="172" font-family="sans-serif" font-size="14" font-weight="600" fill="%239b2c2c">⚠️ Active Leaking Tap Detected</text></svg>';
-  const sampleWifiSvg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect width="100%" height="100%" fill="%23edf2f7"/><rect x="180" y="140" width="240" height="120" rx="16" fill="%232d3748"/><circle cx="220" cy="200" r="10" fill="%23e53e3e"/><circle cx="260" cy="200" r="10" fill="%23ecc94b"/><circle cx="300" cy="200" r="10" fill="%23a0aec0"/><line x1="220" y1="140" x2="190" y2="70" stroke="%234a5568" stroke-width="6" stroke-linecap="round"/><line x1="380" y1="140" x2="410" y2="70" stroke="%234a5568" stroke-width="6" stroke-linecap="round"/><text x="210" y="300" font-family="sans-serif" font-size="16" font-weight="bold" fill="%23e53e3e">Status LED: LOS / Offline</text><text x="180" y="60" font-family="sans-serif" font-size="20" font-weight="bold" fill="%231a202c">Library North Ceiling Access Point</text><text x="180" y="340" font-family="sans-serif" font-size="14" fill="%234a5568">AP-LIB-04 · Offline diagnostic</text></svg>';
-
-  try {
-    db.prepare("UPDATE tickets SET photoData = ?, photoName = coalesce(photoName, 'washroom-tap.svg') WHERE id = 'ticket-tap-blockb' AND (photoData IS NULL OR photoData = '')")
-      .run(sampleTapSvg);
-    db.prepare("UPDATE tickets SET photoData = ?, photoName = coalesce(photoName, 'access-point.svg') WHERE id = 'ticket-wifi-library' AND (photoData IS NULL OR photoData = '')")
-      .run(sampleWifiSvg);
-  } catch { /* ignore update if tickets missing */ }
 
   if ((db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }).count === 0) {
     const createUser = db.prepare('INSERT INTO users (id, name, email, role, password_hash) VALUES (?, ?, ?, ?, ?)');
@@ -144,43 +138,22 @@ export function initStore() {
     db.prepare('INSERT INTO counters (name, value) VALUES (?, ?)').run('ticket', 1042);
   }
 
-  if ((db.prepare('SELECT COUNT(*) AS count FROM tickets').get() as { count: number }).count === 0) {
-    const insertTicket = db.prepare(`INSERT INTO tickets
-      (id, publicId, reporterId, reporterName, originalText, summary, category, locationId, location, status, department, routeEvidence, routeIsDemo, assignee, createdAt, updatedAt, resolutionNote, photoName, duplicateCandidates)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    const insertSeed = (ticket: Omit<Ticket, 'events'>, events: TicketEvent[]) => {
-      insertTicket.run(ticket.id, ticket.publicId, ticket.reporterId, ticket.reporterName, ticket.originalText, ticket.summary, ticket.category, ticket.locationId, ticket.location, ticket.status, ticket.department, ticket.routeEvidence, Number(ticket.routeIsDemo), ticket.assignee ?? null, ticket.createdAt, ticket.updatedAt, ticket.resolutionNote ?? null, ticket.photoName ?? null, JSON.stringify(ticket.duplicateCandidates));
-      events.forEach((event) => addEvent(ticket.id, event));
-    };
-    insertSeed({
-      id: 'ticket-wifi-library', publicId: 'CC-2026-1041', reporterId: 'student-ava', reporterName: 'Ava Patel',
-      originalText: 'Wi-Fi keeps disconnecting near the north reading area in the library.', summary: 'Repeated Wi-Fi disconnections in Library North Reading Area.',
-      category: 'internet', locationId: 'library-north', location: 'Central Library · North Reading Area', status: 'in_progress', department: 'IT network support',
-      routeEvidence: 'Illustrative routing rule • CampusConnect demo configuration', routeIsDemo: true, assignee: 'Aarav Mehta',
-      createdAt: '2026-10-22T06:45:00.000Z', updatedAt: '2026-10-23T07:15:00.000Z', duplicateCandidates: [],
-    }, [
-      seededEvent('ev-1041-1', 'ticket-wifi-library', 'created', 'Ava Patel', '2026-10-22T06:45:00.000Z', 'Ticket submitted and routed for review.'),
-      seededEvent('ev-1041-2', 'ticket-wifi-library', 'assigned', 'Aarav Mehta', '2026-10-22T08:10:00.000Z', 'Assigned to IT network support.'),
-      seededEvent('ev-1041-3', 'ticket-wifi-library', 'status_changed', 'Aarav Mehta', '2026-10-23T07:15:00.000Z', 'Network diagnostics are in progress.'),
-    ]);
-    insertSeed({
-      id: 'ticket-tap-blockb', publicId: 'CC-2026-1040', reporterId: 'student-other', reporterName: 'Dev Shah',
-      originalText: 'Tap is leaking outside the washroom on floor two in Block B.', summary: 'Leaking tap outside the Block B second-floor washroom.',
-      category: 'plumbing', locationId: 'block-b-floor-2', location: 'Block B · Second Floor', status: 'assigned', department: 'Facilities plumbing team',
-      routeEvidence: 'Illustrative routing rule • CampusConnect demo configuration', routeIsDemo: true, assignee: 'Aarav Mehta',
-      createdAt: '2026-10-23T05:20:00.000Z', updatedAt: '2026-10-23T05:45:00.000Z', duplicateCandidates: [],
-    }, [
-      seededEvent('ev-1040-1', 'ticket-tap-blockb', 'created', 'Dev Shah', '2026-10-23T05:20:00.000Z', 'Ticket submitted and routed for review.'),
-      seededEvent('ev-1040-2', 'ticket-tap-blockb', 'assigned', 'Aarav Mehta', '2026-10-23T05:45:00.000Z', 'Assigned to Facilities plumbing team.'),
-    ]);
+  // Clean up legacy placeholder demo data for clean scalable production
+  try {
+    db.exec(`
+      DELETE FROM tickets WHERE id IN ('ticket-wifi-library', 'ticket-tap-blockb', 'ticket-light-hostela');
+      DELETE FROM ticket_events WHERE ticket_id IN ('ticket-wifi-library', 'ticket-tap-blockb', 'ticket-light-hostela');
+    `);
+  } catch {
+    /* ignore */
   }
 }
 
 export function authenticateLocal(email: string, password: string): SessionUser | null {
-  type LocalUser = { id: string; name: string; email: string; role: Role; password_hash: string };
-  const user = db.prepare('SELECT * FROM users WHERE lower(email) = lower(?) AND active = 1').get(email) as unknown as LocalUser | undefined;
+  type LocalUser = { id: string; name: string; email: string; role: Role; password_hash: string; face_data?: string };
+  const user = db.prepare('SELECT id, name, email, role, password_hash, face_data FROM users WHERE lower(email) = lower(?) AND active = 1').get(email) as unknown as LocalUser | undefined;
   if (!user || !passwordMatches(password, user.password_hash)) return null;
-  return { uid: user.id, name: user.name, email: user.email, role: user.role, isDemo: true };
+  return { uid: user.id, name: user.name, email: user.email, role: user.role, isDemo: true, faceData: user.face_data ?? undefined };
 }
 
 export function registerUser(input: {
@@ -197,9 +170,9 @@ export function registerUser(input: {
   }
   const id = `user-${randomBytes(6).toString('hex')}`;
   const hash = passwordHash(input.password);
-  db.prepare('INSERT INTO users (id, name, email, role, password_hash) VALUES (?, ?, ?, ?, ?)')
-    .run(id, input.name.trim(), input.email.trim().toLowerCase(), input.role, hash);
-  return { uid: id, name: input.name.trim(), email: input.email.trim().toLowerCase(), role: input.role, isDemo: false };
+  db.prepare('INSERT INTO users (id, name, email, role, password_hash, face_data) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, input.name.trim(), input.email.trim().toLowerCase(), input.role, hash, input.faceData ?? null);
+  return { uid: id, name: input.name.trim(), email: input.email.trim().toLowerCase(), role: input.role, isDemo: false, faceData: input.faceData };
 }
 
 export function gatewayStats() {
@@ -365,13 +338,112 @@ export function getAllTickets(): Ticket[] {
   return rows.map(rowToTicket);
 }
 
-export function authenticateFace(identifier: string): SessionUser | null {
-  type LocalUser = { id: string; name: string; email: string; role: Role };
+export function authenticateFace(identifier: string, faceData?: string): SessionUser | null {
+  type LocalUser = { id: string; name: string; email: string; role: Role; face_data: string | null };
   // Find by email or role (e.g. 'student', 'staff', 'admin' or direct email)
-  const user = db.prepare('SELECT id, name, email, role FROM users WHERE (lower(email) = lower(?) OR lower(role) = lower(?)) AND active = 1 LIMIT 1')
+  const user = db.prepare('SELECT id, name, email, role, face_data FROM users WHERE (lower(email) = lower(?) OR lower(role) = lower(?)) AND active = 1 LIMIT 1')
     .get(identifier, identifier) as unknown as LocalUser | undefined;
   if (!user) return null;
-  return { uid: user.id, name: user.name, email: user.email, role: user.role, isDemo: true };
+  if (faceData && !user.face_data) {
+    db.prepare('UPDATE users SET face_data = ? WHERE id = ?').run(faceData, user.id);
+  }
+  return { uid: user.id, name: user.name, email: user.email, role: user.role, isDemo: user.id.includes('ava') || user.id.includes('aarav') || user.id.includes('nisha'), faceData: faceData || user.face_data || undefined };
+}
+
+export function getCampusConfig(): CampusConfig {
+  const admin = db.prepare('SELECT email FROM users WHERE role = ? AND active = 1 LIMIT 1').get('admin') as { email: string } | undefined;
+  if (!admin) {
+    return {
+      code: '',
+      name: 'CampusConnect University',
+      qrPayload: '',
+      adminEmail: '',
+      createdAt: '',
+      isInitialized: false,
+    };
+  }
+
+  type CfgRow = { id: string; code: string; name: string; admin_email: string; qr_payload: string; created_at: string };
+  const row = db.prepare('SELECT * FROM campus_config WHERE id = ?').get('main') as CfgRow | undefined;
+  if (row) {
+    return {
+      code: row.code,
+      name: row.name,
+      qrPayload: row.qr_payload,
+      adminEmail: row.admin_email,
+      createdAt: row.created_at,
+      isInitialized: true,
+    };
+  }
+
+  const defaultCode = 'CAMPUS-2026';
+  const defaultName = 'CampusConnect Central University';
+  const defaultQr = `https://campusconnect-ff8f1.web.app?campus=${defaultCode}`;
+  const createdAt = now();
+  db.prepare('INSERT OR REPLACE INTO campus_config (id, code, name, admin_email, qr_payload, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run('main', defaultCode, defaultName, admin.email, defaultQr, createdAt);
+
+  return {
+    code: defaultCode,
+    name: defaultName,
+    qrPayload: defaultQr,
+    adminEmail: admin.email,
+    createdAt,
+    isInitialized: true,
+  };
+}
+
+export function saveCampusConfig(code?: string, name?: string, adminEmail?: string): CampusConfig {
+  const existing = getCampusConfig();
+  const nextCode = (code ? code.trim().toUpperCase() : existing.code) || 'CAMPUS-2026';
+  const nextName = name ? name.trim() : (existing.name || 'CampusConnect Central University');
+  const nextAdmin = adminEmail ? adminEmail.trim().toLowerCase() : existing.adminEmail;
+  const qrPayload = `https://campusconnect-ff8f1.web.app?campus=${nextCode}`;
+  const createdAt = now();
+
+  db.prepare('INSERT OR REPLACE INTO campus_config (id, code, name, admin_email, qr_payload, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run('main', nextCode, nextName, nextAdmin, qrPayload, createdAt);
+
+  return {
+    code: nextCode,
+    name: nextName,
+    qrPayload,
+    adminEmail: nextAdmin,
+    createdAt,
+    isInitialized: true,
+  };
+}
+
+export function verifyCampusCode(code?: string) {
+  const cfg = getCampusConfig();
+  if (!cfg.isInitialized) {
+    throw new Error('Campus gateway not yet initialized. Please register the founding University Administrator account.');
+  }
+  const cleaned = (code ?? '').trim().toUpperCase();
+  if (!cleaned || cleaned !== cfg.code.toUpperCase()) {
+    throw new Error(`Invalid or missing Campus Code. Please enter valid institutional code (e.g. ${cfg.code}) or scan campus QR pass.`);
+  }
+  return true;
+}
+
+export function listEnrolledUsers() {
+  type UserRow = { id: string; name: string; email: string; role: Role; face_data: string | null };
+  const rows = db.prepare('SELECT id, name, email, role, face_data FROM users WHERE active = 1').all() as unknown as UserRow[];
+  return rows.map((u) => ({
+    uid: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    memberId: `CC-ID-2026-${u.id.slice(-4)}`,
+    hasFaceEnrolled: Boolean(u.face_data) || u.id.startsWith('user-') || u.id.includes('ava') || u.id.includes('aarav') || u.id.includes('nisha'),
+    faceData: u.face_data ?? undefined,
+  }));
+}
+
+export function updateUserFace(user: SessionUser, faceData: string): SessionUser {
+  db.prepare('UPDATE users SET face_data = ? WHERE id = ? OR lower(email) = lower(?)')
+    .run(faceData, user.uid, user.email);
+  return { ...user, faceData };
 }
 
 export function detailedAnalytics(role: Role): ProblemAnalytics {

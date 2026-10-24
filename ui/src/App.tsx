@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { api, getStoredSession, storeSession, type StoredSession } from './api';
 import {
   type AiTriage,
+  type CampusConfig,
   type Category,
   type OpsPulse,
   type ProblemAnalytics,
@@ -14,6 +15,7 @@ import FaceLogin from './FaceLogin';
 import SmartTextArea from './SmartTextArea';
 import Chatbot from './Chatbot';
 import Campus3D from './Campus3D';
+import CampusQr from './CampusQr';
 import { playSound } from './audio';
 import { exportTicketsCsv, printExecutiveReport } from './exportReports';
 
@@ -60,11 +62,19 @@ export default function App() {
   const [session, setSession] = useState<StoredSession | null>(() => getStoredSession());
   const [showCredentialPass, setShowCredentialPass] = useState(false);
   const [showFaceEnrollModal, setShowFaceEnrollModal] = useState(false);
+  const [showAdminCampusModal, setShowAdminCampusModal] = useState(false);
+  const [campusConfig, setCampusConfig] = useState<CampusConfig | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [view, setView] = useState<View>('home');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(getStoredSession()));
+
+  useEffect(() => {
+    api.campusConfig()
+      .then((res) => setCampusConfig(res.config))
+      .catch(() => {});
+  }, []);
 
   const refreshTickets = useCallback(async () => {
     const result = await api.tickets();
@@ -255,6 +265,18 @@ export default function App() {
             <span className="context-campus">Biometric Auth · Multimodal AI · Live Analytics</span>
           </div>
           <div className="account-menu">
+            {session.user.role === 'admin' && campusConfig && (
+              <button
+                type="button"
+                className="credential-pass-pill"
+                onClick={() => setShowAdminCampusModal(true)}
+                title="View Institutional Campus QR Code & Access Key"
+                style={{ background: 'rgba(234, 179, 8, 0.15)', borderColor: '#ca8a04', color: '#854d0e' }}
+              >
+                <Symbol name="qr_code_2" filled />
+                <span>Campus QR ({campusConfig.code})</span>
+              </button>
+            )}
             <button
               type="button"
               className="credential-pass-pill"
@@ -423,6 +445,14 @@ export default function App() {
             }
           }}
           onClose={() => setShowFaceEnrollModal(false)}
+        />
+      )}
+
+      {showAdminCampusModal && campusConfig && (
+        <AdminCampusModal
+          config={campusConfig}
+          onClose={() => setShowAdminCampusModal(false)}
+          onUpdate={(cfg) => setCampusConfig(cfg)}
         />
       )}
     </div>
@@ -678,10 +708,94 @@ function CredentialPassModal({
   );
 }
 
+function AdminCampusModal({
+  config,
+  onClose,
+  onUpdate,
+}: {
+  config: CampusConfig;
+  onClose: () => void;
+  onUpdate: (newConfig: CampusConfig) => void;
+}) {
+  const [editingCode, setEditingCode] = useState(config.code);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const handleRegenerate = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await api.generateCampusCode(editingCode);
+      onUpdate(res.config);
+      setMsg('Campus access code and QR gateway updated successfully!');
+    } catch {
+      setMsg('Failed to update campus code.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="credential-modal-backdrop">
+      <div className="credential-pass-card" style={{ maxWidth: '540px' }}>
+        <div className="pass-card-header">
+          <div className="pass-brand">
+            <Symbol name="qr_code_2" filled />
+            <span>Campus Institutional QR & Access Gateway</span>
+          </div>
+          <button type="button" className="icon-button close-pass" onClick={onClose} aria-label="Close modal">
+            <Symbol name="close" />
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gap: '16px', placeItems: 'center', textAlign: 'center' }}>
+          <CampusQr payload={config.qrPayload} code={config.code} name={config.name} size={190} />
+
+          <div style={{ width: '100%', textAlign: 'left', display: 'grid', gap: '8px' }}>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: '#a9f6ef' }}>
+              Custom Campus Code (Students & Staff Access Key)
+              <input
+                type="text"
+                value={editingCode}
+                onChange={(e) => setEditingCode(e.target.value.toUpperCase())}
+                placeholder="e.g. CAMPUS-2026 or IITD-2026"
+                style={{ marginTop: '4px', width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #14b8a6', background: 'rgba(0,0,0,0.3)', color: 'white', fontFamily: 'monospace', fontWeight: 700 }}
+              />
+            </label>
+            <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>
+              Students and staff must enter this code or scan this QR pass when creating an account or logging in.
+            </p>
+            {msg && <p style={{ margin: 0, fontSize: '12px', color: '#86efac', fontWeight: 600 }}>{msg}</p>}
+            <button
+              type="button"
+              className="button primary full"
+              disabled={saving}
+              onClick={handleRegenerate}
+              style={{ marginTop: '6px' }}
+            >
+              {saving ? 'Updating Gateway…' : 'Update & Re-encode QR Pass'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: boolean) => void }) {
   const [gatewayTab, setGatewayTab] = useState<'signin' | 'signup'>('signin');
   const [authMode, setAuthMode] = useState<'password' | 'face'>('password');
   
+  // Campus Code & QR setup
+  const [campusCode, setCampusCode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const urlCode = new URLSearchParams(window.location.search).get('campus');
+      return urlCode ? urlCode.toUpperCase() : '';
+    }
+    return '';
+  });
+  const [campusConfig, setCampusConfig] = useState<CampusConfig | null>(null);
+
   // Sign In state
   const [email, setEmail] = useState('student@campusconnect.local');
   const [password, setPassword] = useState('campus123');
@@ -700,6 +814,19 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
   const [gatewayInfo, setGatewayInfo] = useState<{ totalUsers?: number; status: string } | null>(null);
 
   useEffect(() => {
+    api.campusConfig()
+      .then((res) => {
+        setCampusConfig(res.config);
+        if (res.config.code) {
+          setCampusCode((prev) => prev || res.config.code);
+        }
+        if (!res.config.isInitialized) {
+          setGatewayTab('signup');
+          setSignupRole('admin');
+        }
+      })
+      .catch(() => {});
+
     api.gatewayStatus()
       .then((data) => setGatewayInfo({ totalUsers: data.stats.totalUsers, status: data.status }))
       .catch(() => setGatewayInfo({ status: 'ONLINE (STANDALONE)' }));
@@ -710,7 +837,7 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
     setSubmitting(true);
     setError(null);
     try {
-      onLogin(await api.login(email, password));
+      onLogin(await api.login(email, password, campusCode));
     } catch (reason) {
       setError(errorText(reason));
     } finally {
@@ -737,6 +864,7 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
         password: signupPassword,
         role: signupRole,
         faceData: signupFaceData,
+        campusCode,
       });
       onLogin(session, true);
     } catch (reason) {
@@ -870,6 +998,27 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
               </button>
             </div>
 
+            {/* Campus Code Input */}
+            <label>
+              Campus Institutional Access Code
+              <div className="campus-code-input-wrap">
+                <Symbol name="domain_verification" />
+                <input
+                  name="campusCode"
+                  type="text"
+                  value={campusCode}
+                  onChange={(event) => setCampusCode(event.target.value.toUpperCase())}
+                  placeholder={campusConfig?.code || 'e.g. CAMPUS-2026'}
+                  required
+                />
+                {campusConfig?.isInitialized && campusCode.trim().toUpperCase() === campusConfig.code.toUpperCase() ? (
+                  <span className="code-valid-pill"><Symbol name="check" /> Valid</span>
+                ) : (
+                  <span className="code-hint-pill">Scan QR / Required</span>
+                )}
+              </div>
+            </label>
+
             <label>
               Email Address
               <input
@@ -968,6 +1117,35 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
               <h2>Create New Account</h2>
               <p>Enroll as a new student, facilities staff, or university administrator.</p>
             </div>
+
+            {/* Campus Initialization or Code Requirement */}
+            {campusConfig && !campusConfig.isInitialized ? (
+              <div className="campus-init-banner">
+                <Symbol name="admin_panel_settings" filled />
+                <div>
+                  <strong>Institutional Setup Required</strong>
+                  <p>Register as the founding Campus Administrator to generate the master Campus Code & QR Gateway for your institution.</p>
+                </div>
+              </div>
+            ) : (
+              <label>
+                Campus Institutional Access Code
+                <div className="campus-code-input-wrap">
+                  <Symbol name="domain_verification" />
+                  <input
+                    name="campusCode"
+                    type="text"
+                    value={campusCode}
+                    onChange={(event) => setCampusCode(event.target.value.toUpperCase())}
+                    placeholder={campusConfig?.code || 'e.g. CAMPUS-2026'}
+                    required
+                  />
+                  {campusConfig?.isInitialized && campusCode.trim().toUpperCase() === campusConfig.code.toUpperCase() && (
+                    <span className="code-valid-pill"><Symbol name="check" /> Valid</span>
+                  )}
+                </div>
+              </label>
+            )}
 
             <label>
               Full Name

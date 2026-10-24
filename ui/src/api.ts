@@ -1,6 +1,7 @@
 import type {
   AiDraft,
   AiTriage,
+  CampusConfig,
   Category,
   DuplicateCandidate,
   ImageProblemDetection,
@@ -87,98 +88,75 @@ function saveUser(user: LocalUser) {
   localStorage.setItem(usersStorageKey, JSON.stringify(users));
 }
 
-const DEFAULT_TICKETS: Ticket[] = [
-  {
-    id: 'ticket-wifi-library',
-    publicId: 'CC-2026-1041',
-    reporterId: 'usr-student-ava',
-    reporterName: 'Ava Patel',
-    originalText: 'Wi-Fi keeps disconnecting near the north reading area in the central library. Signal drops every few minutes.',
-    summary: 'Repeated Wi-Fi disconnections in Library North Reading Area.',
-    category: 'internet',
-    locationId: 'library-north',
-    location: 'Central Library · North Reading Area',
-    status: 'in_progress',
-    department: 'IT network support',
-    routeEvidence: 'Illustrative routing rule • CampusConnect network cluster',
-    routeIsDemo: true,
-    assignee: 'Aarav Mehta',
-    createdAt: '2026-10-22T06:45:00.000Z',
-    updatedAt: '2026-10-23T07:15:00.000Z',
-    duplicateCandidates: [],
-    events: [
-      { id: 'ev-1', type: 'created', actor: 'Ava Patel', at: '2026-10-22T06:45:00.000Z', message: 'Ticket submitted via Student Portal.' },
-      { id: 'ev-2', type: 'assigned', actor: 'System Gateway', at: '2026-10-22T08:10:00.000Z', message: 'Dispatched to IT network technician Aarav Mehta.' },
-      { id: 'ev-3', type: 'status_changed', actor: 'Aarav Mehta', at: '2026-10-23T07:15:00.000Z', message: 'Testing Access Point transceiver signal attenuation.' },
-    ],
-  },
-  {
-    id: 'ticket-tap-blockb',
-    publicId: 'CC-2026-1040',
-    reporterId: 'usr-student-dev',
-    reporterName: 'Dev Shah',
-    originalText: 'Water tap is continuously leaking outside the washroom on floor two in Block B.',
-    summary: 'Leaking tap outside the Block B second-floor washroom.',
-    category: 'plumbing',
-    locationId: 'block-b-floor-2',
-    location: 'Block B · Second Floor',
-    status: 'assigned',
-    department: 'Facilities plumbing team',
-    routeEvidence: 'Illustrative routing rule • CampusConnect plumbing dispatch',
-    routeIsDemo: true,
-    assignee: 'Aarav Mehta',
-    createdAt: '2026-10-23T05:20:00.000Z',
-    updatedAt: '2026-10-23T05:45:00.000Z',
-    duplicateCandidates: [],
-    events: [
-      { id: 'ev-4', type: 'created', actor: 'Dev Shah', at: '2026-10-23T05:20:00.000Z', message: 'Ticket submitted.' },
-      { id: 'ev-5', type: 'assigned', actor: 'System Gateway', at: '2026-10-23T05:45:00.000Z', message: 'Assigned to Facilities plumbing team.' },
-    ],
-  },
-  {
-    id: 'ticket-light-hostela',
-    publicId: 'CC-2026-1044',
-    reporterId: 'usr-student-ava',
-    reporterName: 'Ava Patel',
-    originalText: 'Study desk luminaire is flickering and ballast hums loudly in room 102.',
-    summary: 'Flickering luminaire and ballast noise in Hostel A study room.',
-    category: 'electricity',
-    locationId: 'hostel-a-ground',
-    location: 'Hostel A · Ground Floor',
-    status: 'resolved',
-    department: 'Electrical maintenance',
-    routeEvidence: 'Illustrative routing rule • Electrical safety circuit',
-    routeIsDemo: true,
-    assignee: 'Aarav Mehta',
-    createdAt: '2026-10-21T09:00:00.000Z',
-    updatedAt: '2026-10-22T14:30:00.000Z',
-    resolutionNote: 'Replaced degraded electronic ballast and installed new high-efficiency LED tube. Safety verified.',
-    studentFeedback: {
-      rating: 5,
-      satisfaction: 'exceptional',
-      comment: 'Technician Aarav arrived promptly and replaced the light fixture safely. Works perfectly now!',
-      tags: ['Prompt Arrival', 'Neat Work', 'Resolved on First Visit'],
-      submittedAt: '2026-10-22T15:00:00.000Z',
-    },
-    duplicateCandidates: [],
-    events: [
-      { id: 'ev-6', type: 'created', actor: 'Ava Patel', at: '2026-10-21T09:00:00.000Z', message: 'Ticket submitted.' },
-      { id: 'ev-7', type: 'status_changed', actor: 'Aarav Mehta', at: '2026-10-22T14:30:00.000Z', message: 'Status changed to Resolved. Resolution note recorded.' },
-      { id: 'ev-8', type: 'feedback', actor: 'Ava Patel', at: '2026-10-22T15:00:00.000Z', message: 'Student rated resolution 5/5 stars (exceptional).' },
-    ],
-  },
-];
+const campusConfigStorageKey = 'campusconnect_campus_config';
+
+function getCampusConfig(): CampusConfig {
+  const users = getStoredUsers();
+  const admin = users.find((u) => u.role === 'admin');
+  const origin = typeof window !== 'undefined' && window.location.origin
+    ? window.location.origin
+    : 'https://campusconnect-ff8f1.web.app';
+
+  try {
+    const raw = localStorage.getItem(campusConfigStorageKey);
+    if (raw) {
+      const parsed = JSON.parse(raw) as CampusConfig;
+      if (admin) {
+        parsed.isInitialized = true;
+        parsed.adminEmail = admin.email;
+        if (!parsed.qrPayload) parsed.qrPayload = `${origin}?campus=${parsed.code}`;
+        return parsed;
+      }
+    }
+  } catch {
+    /* fallback */
+  }
+
+  // If an admin exists, initialize default code if not present
+  if (admin) {
+    const cfg: CampusConfig = {
+      code: 'CAMPUS-2026',
+      name: 'CampusConnect Central University',
+      qrPayload: `${origin}?campus=CAMPUS-2026`,
+      adminEmail: admin.email,
+      createdAt: new Date().toISOString(),
+      isInitialized: true,
+    };
+    localStorage.setItem(campusConfigStorageKey, JSON.stringify(cfg));
+    return cfg;
+  }
+
+  // If NO admin exists, campus is uninitialized
+  return {
+    code: '',
+    name: 'CampusConnect University',
+    qrPayload: '',
+    adminEmail: '',
+    createdAt: '',
+    isInitialized: false,
+  };
+}
+
+function saveCampusConfig(cfg: CampusConfig) {
+  localStorage.setItem(campusConfigStorageKey, JSON.stringify(cfg));
+}
 
 function getStoredTickets(): Ticket[] {
   try {
     const raw = localStorage.getItem(ticketsStorageKey);
     if (!raw) {
-      localStorage.setItem(ticketsStorageKey, JSON.stringify(DEFAULT_TICKETS));
-      return DEFAULT_TICKETS;
+      localStorage.setItem(ticketsStorageKey, JSON.stringify([]));
+      return [];
     }
-    return JSON.parse(raw) as Ticket[];
+    const list = JSON.parse(raw) as Ticket[];
+    // Remove legacy fake placeholder tickets
+    const clean = list.filter((t) => !['ticket-wifi-library', 'ticket-tap-blockb', 'ticket-light-hostela'].includes(t.id));
+    if (clean.length !== list.length) {
+      localStorage.setItem(ticketsStorageKey, JSON.stringify(clean));
+    }
+    return clean;
   } catch {
-    return DEFAULT_TICKETS;
+    return [];
   }
 }
 
@@ -211,8 +189,43 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
     } as T;
   }
 
+  // 1b. Campus Config & Verification
+  if (path === '/api/campus/config' && method === 'GET') {
+    return { config: getCampusConfig() } as T;
+  }
+
+  if (path === '/api/campus/generate-code' && method === 'POST') {
+    const campusConfig = getCampusConfig();
+    const newCode = (body.code ? String(body.code) : `CAMPUS-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase().trim();
+    const newName = body.name ? String(body.name).trim() : campusConfig.name;
+    const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://campusconnect-ff8f1.web.app';
+    const updated: CampusConfig = {
+      ...campusConfig,
+      code: newCode,
+      name: newName,
+      qrPayload: `${origin}?campus=${newCode}`,
+      isInitialized: true,
+      createdAt: new Date().toISOString(),
+    };
+    saveCampusConfig(updated);
+    return { config: updated, message: 'Campus access code and QR code updated.' } as T;
+  }
+
   // 2. Authentication: Login
   if (path === '/api/auth/login' && method === 'POST') {
+    const campusConfig = getCampusConfig();
+    const providedCode = String(body.campusCode ?? '').trim().toUpperCase();
+
+    // Check if campus is initialized
+    if (!campusConfig.isInitialized) {
+      throw new ApiError('Campus gateway not yet initialized. Please register the founding University Administrator account to generate the Campus Code & QR pass.');
+    }
+
+    // Verify campus code
+    if (providedCode !== campusConfig.code.toUpperCase()) {
+      throw new ApiError(`Invalid Campus Code "${providedCode || '(empty)'}". Please scan your university QR code or enter the code provided by your administrator.`);
+    }
+
     const email = String(body.email ?? '').toLowerCase().trim();
     const password = String(body.password ?? '').trim();
     const users = getStoredUsers();
@@ -238,15 +251,31 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
 
   // 3. Authentication: Signup
   if (path === '/api/auth/signup' && method === 'POST') {
+    const campusConfig = getCampusConfig();
+    const role = (body.role as Role) ?? 'student';
+    const providedCode = String(body.campusCode ?? '').trim().toUpperCase();
+
+    // If campus is NOT initialized yet, the first user MUST be an Admin who initializes the campus!
+    if (!campusConfig.isInitialized) {
+      if (role !== 'admin') {
+        throw new ApiError('Campus gateway not initialized. The first user must register as a University Administrator to generate the Campus Code & QR Gateway.');
+      }
+    } else {
+      // Campus is initialized: campusCode is mandatory
+      if (providedCode !== campusConfig.code.toUpperCase()) {
+        throw new ApiError(`Invalid Campus Code "${providedCode || '(empty)'}". Please scan your university QR code or ask your campus administrator.`);
+      }
+    }
+
     const email = String(body.email ?? '').toLowerCase().trim();
     const name = String(body.name ?? '').trim();
-    const role = (body.role as Role) ?? 'student';
     const password = String(body.password ?? '').trim();
     const faceData = body.faceData ? String(body.faceData) : undefined;
     const users = getStoredUsers();
     if (users.some((u) => u.email.toLowerCase() === email)) {
       throw new ApiError('An account with this email address already exists in the campus directory.');
     }
+
     const memberId = `CC-ID-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const newUser: LocalUser = {
       id: `usr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -258,6 +287,22 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
       memberId,
     };
     saveUser(newUser);
+
+    // If this was the founding admin, initialize the campus code and QR now!
+    if (role === 'admin' && !campusConfig.isInitialized) {
+      const generatedCode = providedCode || `CAMPUS-${Math.floor(1000 + Math.random() * 9000)}`;
+      const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://campusconnect-ff8f1.web.app';
+      const newConfig: CampusConfig = {
+        code: generatedCode,
+        name: `${name}'s Campus Network`,
+        qrPayload: `${origin}?campus=${generatedCode}`,
+        adminEmail: email,
+        createdAt: new Date().toISOString(),
+        isInitialized: true,
+      };
+      saveCampusConfig(newConfig);
+    }
+
     const token = `token-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     return {
       token,
@@ -277,6 +322,10 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
 
   // 4. Authentication: Face Login
   if (path === '/api/auth/face-login' && method === 'POST') {
+    const campusConfig = getCampusConfig();
+    if (!campusConfig.isInitialized) {
+      throw new ApiError('Campus gateway not yet initialized. Please register the founding University Administrator account.');
+    }
     const identifier = String(body.identifier ?? '').toLowerCase();
     const faceData = body.faceData ? String(body.faceData) : undefined;
     const users = getStoredUsers();
@@ -822,8 +871,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  login: (email: string, password: string) => request<StoredSession>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
-  signup: (data: { name: string; email: string; password: string; role: Role; faceData?: string }) => request<StoredSession>('/api/auth/signup', { method: 'POST', body: JSON.stringify(data) }),
+  login: (email: string, password: string, campusCode?: string) => request<StoredSession>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password, campusCode }) }),
+  signup: (data: { name: string; email: string; password: string; role: Role; faceData?: string; campusCode?: string }) => request<StoredSession>('/api/auth/signup', { method: 'POST', body: JSON.stringify(data) }),
+  campusConfig: () => request<{ config: CampusConfig }>('/api/campus/config'),
+  generateCampusCode: (code?: string, name?: string) => request<{ config: CampusConfig; message: string }>('/api/campus/generate-code', { method: 'POST', body: JSON.stringify({ code, name }) }),
   gatewayStatus: () => request<{ gateway: string; status: string; protocol: string; activeSessions: number; stats: { status: string; totalUsers: number; roleBreakdown: Record<string, number> } }>('/api/auth/gateway-status'),
   faceLogin: (identifier: string, faceData?: string) => request<StoredSession>('/api/auth/face-login', { method: 'POST', body: JSON.stringify({ identifier, faceData }) }),
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),

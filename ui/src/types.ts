@@ -6,6 +6,15 @@ export type Category = (typeof categories)[number];
 export type TicketStatus = (typeof statuses)[number];
 export type Role = (typeof roles)[number];
 
+export interface CampusConfig {
+  code: string;
+  name: string;
+  qrPayload: string;
+  adminEmail: string;
+  createdAt: string;
+  isInitialized: boolean;
+}
+
 export interface SessionUser {
   uid: string;
   name: string;

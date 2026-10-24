@@ -11,12 +11,15 @@
     "build": "tsc -b && vite build",
     "start": "tsx server/index.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --max-warnings=0"
+    "lint": "eslint . --max-warnings=0",
+    "test": "tsx --test test/campus_auth.test.ts"
   },
   "dependencies": {
+    "@types/qrcode": "^1.5.6",
     "@types/three": "^0.186.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "three": "^0.186.1",

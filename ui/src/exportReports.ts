@@ -44,7 +44,7 @@ export function exportTicketsCsv(tickets: Ticket[]): void {
     escapeCsv(t.studentFeedback?.satisfaction || 'N/A'),
     escapeCsv(t.studentFeedback?.tags?.join('; ') || ''),
     escapeCsv(t.studentFeedback?.comment || ''),
-    escapeCsv(Boolean(t.photoData || t.photoName) ? 'YES' : 'NO'),
+    escapeCsv((t.photoData || t.photoName) ? 'YES' : 'NO'),
   ]);
 
   const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
