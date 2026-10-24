@@ -22,6 +22,7 @@ const {
   updateUserFace,
   listTickets,
   createTicket,
+  detailedAnalytics,
 } = await import('../server/store.js');
 
 test('1. Initialize isolated campus store with zero placeholder tickets', () => {
@@ -163,4 +164,23 @@ test('10. Edge Case: Clean ticket creation and isolated student ticket queue', (
   assert.equal(studentTickets.length, 1);
   assert.equal(studentTickets[0].id, ticket.id);
   assert.equal(studentTickets[0].summary, 'Library 3F AC sensor malfunction');
+});
+
+test('11. Problem Analytics & Operations Intelligence data contracts', () => {
+  const staffAnalytics = detailedAnalytics('staff');
+  assert.ok(Array.isArray(staffAnalytics.categoryStats), 'categoryStats must be an array');
+  assert.equal(staffAnalytics.categoryStats.length, 4, 'Must contain all 4 facility categories');
+  assert.ok(Array.isArray(staffAnalytics.locationStats), 'locationStats must be an array');
+  assert.ok(Array.isArray(staffAnalytics.statusFunnel), 'statusFunnel must be an array');
+  assert.ok(staffAnalytics.severityBreakdown, 'severityBreakdown must be an object');
+  assert.equal(typeof staffAnalytics.severityBreakdown.urgent, 'number');
+  assert.equal(typeof staffAnalytics.severityBreakdown.attention, 'number');
+  assert.equal(typeof staffAnalytics.severityBreakdown.routine, 'number');
+  assert.equal(staffAnalytics.adminInsights, undefined, 'Staff analytics should omit admin governance insights');
+
+  const adminAnalytics = detailedAnalytics('admin');
+  assert.ok(adminAnalytics.adminInsights, 'Admin analytics must include admin insights');
+  assert.equal(typeof adminAnalytics.adminInsights?.slaComplianceRate, 'number');
+  assert.ok(Array.isArray(adminAnalytics.adminInsights?.departmentWorkload), 'departmentWorkload must be an array');
+  assert.ok(Array.isArray(adminAnalytics.adminInsights?.recurringIssueHotspots), 'recurringIssueHotspots must be an array');
 });

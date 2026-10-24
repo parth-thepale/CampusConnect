@@ -200,7 +200,7 @@ app.post('/api/ai/chat', requireAuth, requireRole('staff', 'admin'), async (req,
     res.json(result);
   } catch (error) { next(error); }
 });
-app.get('/api/analytics', requireAuth, requireRole('staff', 'admin'), (req, res) => {
+app.get('/api/analytics', requireAuth, (req, res) => {
   res.json({ analytics: detailedAnalytics(req.user!.role) });
 });
 app.post('/api/ai/duplicate-preview', requireAuth, async (req, res, next) => {

@@ -2918,7 +2918,7 @@ function Operations({ role, tickets }: { role: Role; tickets: Ticket[] }) {
             <span className="badge-pill">4 Categories</span>
           </div>
           <div className="category-stats-list">
-            {data.categoryStats.map((item) => {
+            {(data.categoryStats ?? []).map((item) => {
               const pct = data.totalTickets > 0 ? Math.round((item.total / data.totalTickets) * 100) : 0;
               return (
                 <div key={item.category} className="cat-stat-row">
@@ -2973,7 +2973,7 @@ function Operations({ role, tickets }: { role: Role; tickets: Ticket[] }) {
               <span>Active</span>
               <span>Total</span>
             </div>
-            {data.locationStats.map((loc) => (
+            {(data.locationStats ?? []).map((loc) => (
               <div key={loc.locationId} className="hotspot-row">
                 <span className="hotspot-name">{loc.location}</span>
                 <span className="hotspot-cat">
@@ -3000,7 +3000,7 @@ function Operations({ role, tickets }: { role: Role; tickets: Ticket[] }) {
           <span className="eyebrow">Lifecycle Pipeline</span>
           <h2>Ticket status funnel</h2>
           <div className="funnel-display">
-            {data.statusFunnel.map((stage) => (
+            {(data.statusFunnel ?? []).map((stage) => (
               <div key={stage.status} className="funnel-step">
                 <div className="funnel-bar">
                   <div
@@ -3024,7 +3024,7 @@ function Operations({ role, tickets }: { role: Role; tickets: Ticket[] }) {
             <div className="severity-box urgent">
               <Symbol name="priority_high" filled />
               <div>
-                <strong>{data.severityBreakdown.urgent}</strong>
+                <strong>{data.severityBreakdown?.urgent ?? 0}</strong>
                 <span>Urgent</span>
               </div>
               <small>Immediate action needed</small>
@@ -3032,7 +3032,7 @@ function Operations({ role, tickets }: { role: Role; tickets: Ticket[] }) {
             <div className="severity-box attention">
               <Symbol name="visibility" filled />
               <div>
-                <strong>{data.severityBreakdown.attention}</strong>
+                <strong>{data.severityBreakdown?.attention ?? 0}</strong>
                 <span>Attention</span>
               </div>
               <small>Staff review active</small>
@@ -3040,7 +3040,7 @@ function Operations({ role, tickets }: { role: Role; tickets: Ticket[] }) {
             <div className="severity-box routine">
               <Symbol name="check_circle" filled />
               <div>
-                <strong>{data.severityBreakdown.routine}</strong>
+                <strong>{data.severityBreakdown?.routine ?? 0}</strong>
                 <span>Routine</span>
               </div>
               <small>Standard queue pacing</small>
@@ -3102,21 +3102,21 @@ function Operations({ role, tickets }: { role: Role; tickets: Ticket[] }) {
 
             <article className="admin-kpi-card">
               <span className="admin-kpi-label">Escalation risk index</span>
-              <strong className={`admin-kpi-val risk-${data.adminInsights.escalationRiskIndex}`}>
-                {data.adminInsights.escalationRiskIndex.toUpperCase()}
+              <strong className={`admin-kpi-val risk-${data.adminInsights.escalationRiskIndex ?? 'low'}`}>
+                {(data.adminInsights.escalationRiskIndex ?? 'low').toUpperCase()}
               </strong>
               <small>Calculated from open ticket aging</small>
             </article>
 
             <article className="admin-kpi-card">
               <span className="admin-kpi-label">Repeat incident areas</span>
-              <strong className="admin-kpi-val">{data.adminInsights.recurringIssueHotspots.length}</strong>
+              <strong className="admin-kpi-val">{(data.adminInsights.recurringIssueHotspots ?? []).length}</strong>
               <small>Locations with multiple reports</small>
             </article>
           </div>
 
           <div className="department-workload-grid">
-            {data.adminInsights.departmentWorkload.map((dept) => (
+            {(data.adminInsights.departmentWorkload ?? []).map((dept) => (
               <article key={dept.department} className="dept-workload-card">
                 <div className="dept-card-top">
                   <strong>{dept.department}</strong>

@@ -765,48 +765,148 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
   // 20. Analytics
   if (path === '/api/analytics') {
     const tickets = getStoredTickets();
-    const feedbacks = tickets.map((t) => t.studentFeedback).filter(Boolean);
-    const avgRating = feedbacks.length > 0
-      ? Math.round((feedbacks.reduce((acc, f) => acc + (f?.rating ?? 5), 0) / feedbacks.length) * 10) / 10
-      : 5.0;
-    return {
-      analytics: {
-        totalTickets: tickets.length,
-        openTickets: tickets.filter((t) => t.status !== 'resolved').length,
-        inProgressTickets: tickets.filter((t) => t.status === 'in_progress').length,
-        resolvedTickets: tickets.filter((t) => t.status === 'resolved').length,
-        resolutionRate: tickets.length > 0 ? Math.round((tickets.filter((t) => t.status === 'resolved').length / tickets.length) * 100) : 100,
-        averageResolutionHours: 3.2,
-        photoAttachmentRate: 75,
-        categoryBreakdown: (['plumbing', 'electricity', 'cleanliness', 'internet'] as Category[]).map((c) => ({
-          category: c,
-          count: tickets.filter((t) => t.category === c).length,
-          percentage: Math.round((tickets.filter((t) => t.category === c).length / (tickets.length || 1)) * 100),
-          averageResolutionHours: 2.8,
-        })),
-        locationBreakdown: [
-          { location: 'Central Library', count: tickets.filter((t) => t.location.includes('Library')).length, activeIssues: 1 },
-          { location: 'Block B', count: tickets.filter((t) => t.location.includes('Block B')).length, activeIssues: 1 },
-          { location: 'Hostel A', count: tickets.filter((t) => t.location.includes('Hostel')).length, activeIssues: 0 },
-        ],
-        adminInsights: {
-          slaBreachRiskCount: 0,
-          highestVolumeDepartment: 'Facilities plumbing team',
-          repeatIssueLocations: ['Block B · Second Floor'],
-          technicianWorkload: [
-            { assignee: 'Aarav Mehta', activeCount: 2, completedCount: 5 },
-          ],
-        },
-        studentSatisfaction: {
-          averageRating: avgRating,
-          totalRatings: feedbacks.length,
-          satisfactionRate: 100,
-          exceptionalCount: feedbacks.filter((f) => f?.satisfaction === 'exceptional').length,
-          goodCount: feedbacks.filter((f) => f?.satisfaction === 'good').length,
-          averageCount: feedbacks.filter((f) => f?.satisfaction === 'average').length,
-          poorCount: feedbacks.filter((f) => f?.satisfaction === 'poor').length,
-        },
+    const session = getStoredSession();
+    const role: Role = session?.user?.role ?? 'student';
+    const totalTickets = tickets.length;
+    const openTickets = tickets.filter((t) => ['submitted', 'needs_information', 'assigned', 'reopened'].includes(t.status)).length;
+    const inProgressTickets = tickets.filter((t) => t.status === 'in_progress').length;
+    const resolvedTickets = tickets.filter((t) => t.status === 'resolved').length;
+    const resolutionRate = totalTickets > 0 ? Math.round((resolvedTickets / totalTickets) * 100) : 100;
+
+    const resolvedWithDates = tickets.filter((t) => t.status === 'resolved');
+    let avgResolutionHours = 3.2;
+    if (resolvedWithDates.length > 0) {
+      const totalMs = resolvedWithDates.reduce((acc, t) => {
+        const diff = new Date(t.updatedAt).getTime() - new Date(t.createdAt).getTime();
+        return acc + Math.max(diff, 1800000);
+      }, 0);
+      avgResolutionHours = Math.round((totalMs / (resolvedWithDates.length * 3600000)) * 10) / 10;
+    }
+
+    const photoAttachmentRate = totalTickets > 0
+      ? Math.round((tickets.filter((t) => Boolean(t.photoData || t.photoName)).length / totalTickets) * 100)
+      : 80;
+
+    const cats: Category[] = ['plumbing', 'electricity', 'cleanliness', 'internet'];
+    const categoryStats = cats.map((category) => {
+      const subset = tickets.filter((t) => t.category === category);
+      const resolvedCount = subset.filter((t) => t.status === 'resolved').length;
+      return {
+        category,
+        total: subset.length,
+        open: subset.filter((t) => t.status !== 'resolved').length,
+        resolved: resolvedCount,
+        avgResolutionHours: category === 'internet' ? 2.5 : category === 'electricity' ? 3.8 : category === 'plumbing' ? 5.2 : 2.0,
+      };
+    });
+
+    const locationMap = new Map<string, { location: string; count: number; activeCount: number; categories: Record<Category, number> }>();
+    for (const t of tickets) {
+      const cur = locationMap.get(t.locationId) ?? {
+        location: t.location,
+        count: 0,
+        activeCount: 0,
+        categories: { plumbing: 0, electricity: 0, cleanliness: 0, internet: 0 },
+      };
+      cur.count += 1;
+      if (t.status !== 'resolved') cur.activeCount += 1;
+      cur.categories[t.category] += 1;
+      locationMap.set(t.locationId, cur);
+    }
+
+    let locationStats = Array.from(locationMap.entries()).map(([locationId, data]) => {
+      let topCat: Category = 'plumbing';
+      let maxCatCount = -1;
+      for (const [c, cnt] of Object.entries(data.categories) as [Category, number][]) {
+        if (cnt > maxCatCount) { maxCatCount = cnt; topCat = c; }
+      }
+      return {
+        locationId,
+        location: data.location,
+        count: data.count,
+        activeCount: data.activeCount,
+        topCategory: topCat,
+      };
+    }).sort((a, b) => b.count - a.count);
+
+    if (locationStats.length === 0) {
+      locationStats = [
+        { locationId: 'b-library', location: 'Central Knowledge Commons (Library)', count: 0, activeCount: 0, topCategory: 'internet' },
+        { locationId: 'b-hostel-b', location: 'Gargi Hostel (Block B)', count: 0, activeCount: 0, topCategory: 'plumbing' },
+        { locationId: 'b-hostel-a', location: 'Hostel Block A (Raman Hostel)', count: 0, activeCount: 0, topCategory: 'electricity' },
+      ];
+    }
+
+    const statuses: TicketStatus[] = ['submitted', 'assigned', 'in_progress', 'resolved'];
+    const statusFunnel = statuses.map((status) => {
+      const count = tickets.filter((t) => t.status === status).length;
+      return {
+        status,
+        count,
+        percentage: totalTickets > 0 ? Math.round((count / totalTickets) * 100) : 0,
+      };
+    });
+
+    const urgent = tickets.filter((t) => /(spark|shock|smoke|fire|flood|overflow|hazard|exposed)/i.test(`${t.originalText} ${t.summary}`)).length;
+    const attention = tickets.filter((t) => !/(spark|shock|smoke|fire|flood|overflow|hazard|exposed)/i.test(`${t.originalText} ${t.summary}`) && (t.category === 'electricity' || t.category === 'plumbing' || t.status === 'in_progress')).length;
+    const routine = Math.max(0, totalTickets - urgent - attention);
+
+    const withFeedback = tickets.filter((t) => t.studentFeedback);
+    const totalFeedbackCount = withFeedback.length;
+    const averageRating = totalFeedbackCount > 0
+      ? Math.round((withFeedback.reduce((sum, t) => sum + (t.studentFeedback?.rating ?? 5), 0) / totalFeedbackCount) * 10) / 10
+      : 4.8;
+    const positiveCount = withFeedback.filter((t) => (t.studentFeedback?.rating ?? 5) >= 4).length;
+    const satisfactionPercentage = totalFeedbackCount > 0
+      ? Math.round((positiveCount / totalFeedbackCount) * 100)
+      : 96;
+
+    const analyticsResult: ProblemAnalytics = {
+      totalTickets,
+      openTickets,
+      inProgressTickets,
+      resolvedTickets,
+      resolutionRate,
+      averageResolutionHours: avgResolutionHours,
+      photoAttachmentRate,
+      categoryStats,
+      locationStats,
+      statusFunnel,
+      severityBreakdown: { urgent, attention, routine },
+      studentSatisfaction: {
+        averageRating,
+        totalFeedbackCount,
+        satisfactionPercentage,
       },
+    };
+
+    if (role === 'admin') {
+      const rules = [
+        { id: 'r-1', category: 'plumbing' as Category, department: 'Facilities plumbing team' },
+        { id: 'r-2', category: 'electricity' as Category, department: 'Electrical maintenance' },
+        { id: 'r-3', category: 'cleanliness' as Category, department: 'Campus services' },
+        { id: 'r-4', category: 'internet' as Category, department: 'IT network support' },
+      ];
+      analyticsResult.adminInsights = {
+        slaComplianceRate: 94,
+        departmentWorkload: rules.map((r) => {
+          const catTickets = tickets.filter((t) => t.category === r.category);
+          const active = catTickets.filter((t) => t.status !== 'resolved').length;
+          return {
+            department: r.department,
+            category: r.category,
+            count: catTickets.length,
+            active,
+            capacityStatus: active > 4 ? 'overloaded' : active > 1 ? 'busy' : 'normal',
+          };
+        }),
+        escalationRiskIndex: openTickets > 6 ? 'elevated' : openTickets > 2 ? 'moderate' : 'low',
+        recurringIssueHotspots: locationStats.filter((l) => l.count >= 2).map((l) => l.location),
+      };
+    }
+
+    return {
+      analytics: analyticsResult,
     } as T;
   }
 
