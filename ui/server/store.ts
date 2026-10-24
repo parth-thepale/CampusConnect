@@ -9,6 +9,18 @@ mkdirSync(dirname(databasePath), { recursive: true });
 
 const db = new DatabaseSync(databasePath);
 
+export function getUserDbKey(userOrKey?: SessionUser | string | null): string {
+  if (!userOrKey) return 'global';
+  const raw = typeof userOrKey === 'string'
+    ? userOrKey
+    : (userOrKey.email || userOrKey.uid || 'global');
+  return raw.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+}
+
+export function closeUserDbs() {
+  /* no-op: single unified database */
+}
+
 type TicketRow = Omit<Ticket, 'duplicateCandidates' | 'events' | 'studentFeedback'> & { duplicateCandidates: string; events?: string; photoData?: string | null; studentFeedback?: string | null };
 
 function now() {
@@ -27,8 +39,8 @@ function passwordMatches(password: string, stored: string) {
   return candidate.length === target.length && timingSafeEqual(candidate, target);
 }
 
-function rowToTicket(row: TicketRow): Ticket {
-  const events = db.prepare('SELECT * FROM ticket_events WHERE ticket_id = ? ORDER BY at ASC').all(row.id) as unknown as TicketEvent[];
+function rowToTicket(row: TicketRow, targetDb: DatabaseSync = db): Ticket {
+  const events = targetDb.prepare('SELECT * FROM ticket_events WHERE ticket_id = ? ORDER BY at ASC').all(row.id) as unknown as TicketEvent[];
   return {
     ...row,
     photoData: row.photoData ?? undefined,
@@ -38,8 +50,8 @@ function rowToTicket(row: TicketRow): Ticket {
   };
 }
 
-function addEvent(ticketId: string, event: TicketEvent) {
-  db.prepare('INSERT INTO ticket_events (id, ticket_id, type, actor, at, message) VALUES (?, ?, ?, ?, ?, ?)')
+function addEvent(ticketId: string, event: TicketEvent, targetDb: DatabaseSync = db) {
+  targetDb.prepare('INSERT INTO ticket_events (id, ticket_id, type, actor, at, message) VALUES (?, ?, ?, ?, ?, ?)')
     .run(event.id, ticketId, event.type, event.actor, event.at, event.message);
 }
 
@@ -119,6 +131,12 @@ export function initStore() {
       created_by TEXT,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
 
   if ((db.prepare('SELECT COUNT(*) AS count FROM campus_ids').get() as { count: number }).count === 0) {
@@ -157,6 +175,47 @@ export function initStore() {
   }
 }
 
+export function createSession(user: SessionUser, ttlHours = 24): string {
+  const token = randomBytes(32).toString('hex');
+  const createdAt = now();
+  const expiresAt = new Date(Date.now() + ttlHours * 3600 * 1000).toISOString();
+  db.prepare('INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
+    .run(token, user.uid, expiresAt, createdAt);
+  return token;
+}
+
+export function getSession(token: string): SessionUser | null {
+  purgeExpiredSessions();
+  type SessionRow = { id: string; name: string; email: string; role: Role; face_data: string | null };
+  const user = db.prepare(`
+    SELECT u.id, u.name, u.email, u.role, u.face_data
+    FROM sessions s
+    JOIN users u ON s.user_id = u.id
+    WHERE s.token = ? AND s.expires_at > ? AND u.active = 1
+  `).get(token, now()) as SessionRow | undefined;
+  if (!user) return null;
+  return {
+    uid: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    isDemo: user.id.includes('ava') || user.id.includes('aarav') || user.id.includes('nisha'),
+    faceData: user.face_data ?? undefined,
+  };
+}
+
+export function deleteSession(token: string) {
+  db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+}
+
+export function purgeExpiredSessions() {
+  db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now());
+}
+
+export function countActiveSessions(): number {
+  return (db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE expires_at > ?').get(now()) as { count: number }).count;
+}
+
 export function authenticateLocal(email: string, password: string): SessionUser | null {
   type LocalUser = { id: string; name: string; email: string; role: Role; password_hash: string; face_data?: string };
   const user = db.prepare('SELECT id, name, email, role, password_hash, face_data FROM users WHERE lower(email) = lower(?) AND active = 1').get(email) as unknown as LocalUser | undefined;
@@ -180,7 +239,8 @@ export function registerUser(input: {
   const hash = passwordHash(input.password);
   db.prepare('INSERT INTO users (id, name, email, role, password_hash, face_data) VALUES (?, ?, ?, ?, ?, ?)')
     .run(id, input.name.trim(), input.email.trim().toLowerCase(), input.role, hash, input.faceData ?? null);
-  return { uid: id, name: input.name.trim(), email: input.email.trim().toLowerCase(), role: input.role, isDemo: false, faceData: input.faceData };
+  const user: SessionUser = { uid: id, name: input.name.trim(), email: input.email.trim().toLowerCase(), role: input.role, isDemo: false, faceData: input.faceData };
+  return user;
 }
 
 export function gatewayStats() {
@@ -196,14 +256,14 @@ export function gatewayStats() {
 export function listTickets(user: SessionUser): Ticket[] {
   const rows = user.role === 'student'
     ? db.prepare('SELECT * FROM tickets WHERE reporterId = ? ORDER BY updatedAt DESC').all(user.uid) as unknown as TicketRow[]
-    : db.prepare('SELECT * FROM tickets ORDER BY CASE status WHEN \'needs_information\' THEN 0 WHEN \'submitted\' THEN 1 WHEN \'assigned\' THEN 2 WHEN \'in_progress\' THEN 3 ELSE 4 END, updatedAt DESC').all() as unknown as TicketRow[];
-  return rows.map(rowToTicket);
+    : db.prepare("SELECT * FROM tickets ORDER BY CASE status WHEN 'needs_information' THEN 0 WHEN 'submitted' THEN 1 WHEN 'assigned' THEN 2 WHEN 'in_progress' THEN 3 ELSE 4 END, updatedAt DESC").all() as unknown as TicketRow[];
+  return rows.map((r) => rowToTicket(r, db));
 }
 
 export function getTicket(user: SessionUser, id: string): Ticket | null {
   const row = db.prepare('SELECT * FROM tickets WHERE id = ?').get(id) as TicketRow | undefined;
   if (!row || (user.role === 'student' && row.reporterId !== user.uid)) return null;
-  return rowToTicket(row);
+  return rowToTicket(row, db);
 }
 
 export function routeFor(category: Category) {
@@ -215,7 +275,7 @@ export function findCandidates(category: Category, locationId: string, text: str
   const tokens = text.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 3).slice(0, 8);
   const rows = db.prepare("SELECT * FROM tickets WHERE status != 'resolved' AND category = ? ORDER BY updatedAt DESC LIMIT 12").all(category) as unknown as TicketRow[];
   return rows
-    .map(rowToTicket)
+    .map((r) => rowToTicket(r, db))
     .map((ticket) => {
       const sameLocation = ticket.locationId === locationId;
       const haystack = `${ticket.summary} ${ticket.originalText}`.toLowerCase();
@@ -230,8 +290,8 @@ export function findCandidates(category: Category, locationId: string, text: str
 export function createTicket(user: SessionUser, input: { originalText: string; summary: string; category: Category; locationId: string; location: string; photoName?: string; photoData?: string; candidates: DuplicateCandidate[] }): Ticket {
   db.exec('BEGIN IMMEDIATE');
   try {
-    const counter = db.prepare('SELECT value FROM counters WHERE name = ?').get('ticket') as { value: number };
-    const next = counter.value + 1;
+    const counter = db.prepare('SELECT value FROM counters WHERE name = ?').get('ticket') as { value: number } | undefined;
+    const next = (counter?.value ?? 1042) + 1;
     db.prepare('UPDATE counters SET value = ? WHERE name = ?').run(next, 'ticket');
     const id = `ticket-${randomBytes(8).toString('hex')}`;
     const publicId = `CC-2026-${next}`;
@@ -246,7 +306,7 @@ export function createTicket(user: SessionUser, input: { originalText: string; s
     db.prepare(`INSERT INTO tickets (id, publicId, reporterId, reporterName, originalText, summary, category, locationId, location, status, department, routeEvidence, routeIsDemo, assignee, createdAt, updatedAt, resolutionNote, photoName, photoData, duplicateCandidates)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(ticket.id, ticket.publicId, ticket.reporterId, ticket.reporterName, ticket.originalText, ticket.summary, ticket.category, ticket.locationId, ticket.location, ticket.status, ticket.department, ticket.routeEvidence, Number(ticket.routeIsDemo), null, ticket.createdAt, ticket.updatedAt, null, ticket.photoName ?? null, ticket.photoData ?? null, JSON.stringify(ticket.duplicateCandidates));
-    addEvent(id, { id: `event-${randomBytes(8).toString('hex')}`, type: 'created', actor: user.name, at: createdAt, message: `Ticket submitted and sent to ${route.department}.` });
+    addEvent(id, { id: `event-${randomBytes(8).toString('hex')}`, type: 'created', actor: user.name, at: createdAt, message: `Ticket submitted and sent to ${route.department}.` }, db);
     db.exec('COMMIT');
     return getTicket({ ...user, role: 'staff' }, id)!;
   } catch (error) {
@@ -268,9 +328,9 @@ export function updateTicket(user: SessionUser, id: string, input: { status?: Ti
   const assignee = input.assignee ?? ticket.assignee ?? null;
   const resolutionNote = input.resolutionNote ?? ticket.resolutionNote ?? null;
   db.prepare('UPDATE tickets SET status = ?, assignee = ?, resolutionNote = ?, updatedAt = ? WHERE id = ?').run(status, assignee, resolutionNote, changedAt, id);
-  if (input.assignee && input.assignee !== ticket.assignee) addEvent(id, { id: `event-${randomBytes(8).toString('hex')}`, type: 'assigned', actor: user.name, at: changedAt, message: `Assigned to ${input.assignee}.` });
-  if (input.status) addEvent(id, { id: `event-${randomBytes(8).toString('hex')}`, type: 'status_changed', actor: user.name, at: changedAt, message: input.status === 'resolved' && input.resolutionNote ? `Resolved: ${input.resolutionNote}` : `Status changed to ${input.status.replace('_', ' ')}.` });
-  if (input.note) addEvent(id, { id: `event-${randomBytes(8).toString('hex')}`, type: 'note', actor: user.name, at: changedAt, message: input.note });
+  if (input.assignee && input.assignee !== ticket.assignee) addEvent(id, { id: `event-${randomBytes(8).toString('hex')}`, type: 'assigned', actor: user.name, at: changedAt, message: `Assigned to ${input.assignee}.` }, db);
+  if (input.status) addEvent(id, { id: `event-${randomBytes(8).toString('hex')}`, type: 'status_changed', actor: user.name, at: changedAt, message: input.status === 'resolved' && input.resolutionNote ? `Resolved: ${input.resolutionNote}` : `Status changed to ${input.status.replace('_', ' ')}.` }, db);
+  if (input.note) addEvent(id, { id: `event-${randomBytes(8).toString('hex')}`, type: 'note', actor: user.name, at: changedAt, message: input.note }, db);
   return getTicket({ ...user, role: 'staff' }, id);
 }
 
@@ -310,7 +370,7 @@ export function submitStudentFeedback(
     actor: user.name,
     at: submittedAt,
     message: `Student feedback: ${stars} (${satisfaction})${comment ? ` · "${comment}"` : ''}`,
-  });
+  }, db);
 
   return getTicket(user, id);
 }
@@ -320,13 +380,13 @@ export function decideDuplicate(user: SessionUser, ticketId: string, candidateId
   if (!ticket || !ticket.duplicateCandidates.some((candidate) => candidate.id === candidateId)) return null;
   const createdAt = now();
   db.prepare('INSERT INTO duplicate_reviews (id, ticket_id, candidate_id, decision, reviewer, reasons, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(`review-${randomBytes(8).toString('hex')}`, ticketId, candidateId, decision, user.name, reasons, createdAt);
-  addEvent(ticketId, { id: `event-${randomBytes(8).toString('hex')}`, type: 'duplicate_reviewed', actor: user.name, at: createdAt, message: `Duplicate candidate review: ${decision.replaceAll('_', ' ')}. ${reasons}` });
+  addEvent(ticketId, { id: `event-${randomBytes(8).toString('hex')}`, type: 'duplicate_reviewed', actor: user.name, at: createdAt, message: `Duplicate candidate review: ${decision.replaceAll('_', ' ')}. ${reasons}` }, db);
   db.prepare('UPDATE tickets SET updatedAt = ? WHERE id = ?').run(createdAt, ticketId);
   return getTicket({ ...user, role: 'staff' }, ticketId);
 }
 
 export function metrics(): Metrics {
-  const tickets = (db.prepare('SELECT * FROM tickets').all() as unknown as TicketRow[]).map(rowToTicket);
+  const tickets = (db.prepare('SELECT * FROM tickets').all() as unknown as TicketRow[]).map((r) => rowToTicket(r, db));
   const active = tickets.filter((ticket) => !['resolved'].includes(ticket.status));
   return {
     open: active.filter((ticket) => ['submitted', 'needs_information', 'assigned', 'reopened'].includes(ticket.status)).length,
@@ -343,16 +403,19 @@ export function routingRules() {
 
 export function getAllTickets(): Ticket[] {
   const rows = db.prepare('SELECT * FROM tickets ORDER BY updatedAt DESC').all() as unknown as TicketRow[];
-  return rows.map(rowToTicket);
+  return rows.map((r) => rowToTicket(r, db));
 }
 
 export function authenticateFace(identifier: string, faceData?: string): SessionUser | null {
+  if (!faceData) return null;
   type LocalUser = { id: string; name: string; email: string; role: Role; face_data: string | null };
-  // Find by email or role (e.g. 'student', 'staff', 'admin' or direct email)
-  const user = db.prepare('SELECT id, name, email, role, face_data FROM users WHERE (lower(email) = lower(?) OR lower(role) = lower(?)) AND active = 1 LIMIT 1')
+  const user = db.prepare('SELECT id, name, email, role, face_data FROM users WHERE (lower(email) = lower(?) OR id = ?) AND active = 1 LIMIT 1')
     .get(identifier, identifier) as unknown as LocalUser | undefined;
   if (!user) return null;
-  if (faceData && !user.face_data) {
+  if (user.face_data && user.face_data !== faceData) {
+    return null;
+  }
+  if (!user.face_data && faceData) {
     db.prepare('UPDATE users SET face_data = ? WHERE id = ?').run(faceData, user.id);
   }
   return { uid: user.id, name: user.name, email: user.email, role: user.role, isDemo: user.id.includes('ava') || user.id.includes('aarav') || user.id.includes('nisha'), faceData: faceData || user.face_data || undefined };
@@ -482,7 +545,6 @@ export function listEnrolledUsers() {
     role: u.role,
     memberId: `CC-ID-2026-${u.id.slice(-4)}`,
     hasFaceEnrolled: Boolean(u.face_data) || u.id.startsWith('user-') || u.id.includes('ava') || u.id.includes('aarav') || u.id.includes('nisha'),
-    faceData: u.face_data ?? undefined,
   }));
 }
 
@@ -493,7 +555,7 @@ export function updateUserFace(user: SessionUser, faceData: string): SessionUser
 }
 
 export function detailedAnalytics(role: Role): ProblemAnalytics {
-  const tickets = (db.prepare('SELECT * FROM tickets').all() as unknown as TicketRow[]).map(rowToTicket);
+  const tickets = (db.prepare('SELECT * FROM tickets').all() as unknown as TicketRow[]).map((r) => rowToTicket(r, db));
   const totalTickets = tickets.length;
   const openTickets = tickets.filter((t) => ['submitted', 'needs_information', 'assigned', 'reopened'].includes(t.status)).length;
   const inProgressTickets = tickets.filter((t) => t.status === 'in_progress').length;

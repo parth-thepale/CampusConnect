@@ -33,9 +33,15 @@ async function main() {
         ],
         headers: [
           {
-            glob: '**',
+            glob: '/index.html',
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }
+          },
+          {
+            glob: '/assets/**',
+            headers: {
+              'Cache-Control': 'max-age=31536000, immutable'
             }
           }
         ]

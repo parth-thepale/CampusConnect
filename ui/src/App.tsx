@@ -20,6 +20,7 @@ import Campus3D from './Campus3D';
 import CampusQr from './CampusQr';
 import CampusArchitectModal from './CampusArchitectModal';
 import IndexPage from './IndexPage';
+import { useLanguage, LanguageToggle } from './i18n';
 import { playSound } from './audio';
 import { exportTicketsCsv, printExecutiveReport } from './exportReports';
 
@@ -46,7 +47,8 @@ function Symbol({ name, filled = false }: { name: string; filled?: boolean }) {
 }
 
 function Status({ value }: { value: TicketStatus }) {
-  return <span className={`status status-${value}`}>{statusLabels[value]}</span>;
+  const { t } = useLanguage();
+  return <span className={`status status-${value}`}>{t(`status_${value}`)}</span>;
 }
 
 function formatDate(value: string) {
@@ -63,6 +65,7 @@ function errorText(error: unknown) {
 }
 
 export default function App() {
+  const { t } = useLanguage();
   const [session, setSession] = useState<StoredSession | null>(() => getStoredSession());
   const [showCredentialPass, setShowCredentialPass] = useState(false);
   const [showFaceEnrollModal, setShowFaceEnrollModal] = useState(false);
@@ -71,6 +74,16 @@ export default function App() {
   const [campusConfig, setCampusConfig] = useState<CampusConfig | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [view, setView] = useState<View>('home');
+  const [previousView, setPreviousView] = useState<View>('home');
+
+  const openCampusView = useCallback(() => {
+    setView((curr) => {
+      if (curr !== 'campus') {
+        setPreviousView(curr);
+      }
+      return 'campus';
+    });
+  }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(getStoredSession()));
@@ -133,6 +146,8 @@ export default function App() {
   }, [sessionToken]);
 
   const completeLogin = (next: StoredSession, isNewUser = false) => {
+    setTickets([]);
+    setSelectedId(null);
     setSession(next);
     storeSession(next);
     setView(next.user.role === 'student' ? 'home' : 'queue');
@@ -219,7 +234,7 @@ export default function App() {
           {isStudent && (
             <NavButton
               icon="space_dashboard"
-              label="Overview"
+              label={t('overview')}
               active={view === 'home'}
               onClick={() => setView('home')}
             />
@@ -227,7 +242,7 @@ export default function App() {
           {isStudent && (
             <NavButton
               icon="add_circle"
-              label="Report an issue"
+              label={t('report_an_issue')}
               active={view === 'report'}
               onClick={() => setView('report')}
             />
@@ -235,7 +250,7 @@ export default function App() {
           {isStudent && (
             <NavButton
               icon="confirmation_number"
-              label="My tickets"
+              label={t('my_tickets')}
               active={view === 'tickets' || view === 'ticket'}
               onClick={() => setView('tickets')}
             />
@@ -243,23 +258,23 @@ export default function App() {
           {isStudent && (
             <NavButton
               icon="map"
-              label="Campus tech locator"
+              label={t('campus_tech_locator')}
               active={view === 'campus'}
-              onClick={() => setView('campus')}
+              onClick={openCampusView}
             />
           )}
           {!isStudent && (
             <NavButton
               icon="view_in_ar"
-              label="Virtual campus 3D"
+              label={t('virtual_campus_3d')}
               active={view === 'campus'}
-              onClick={() => setView('campus')}
+              onClick={openCampusView}
             />
           )}
           {!isStudent && (
             <NavButton
               icon="format_list_bulleted"
-              label="Work queue"
+              label={t('work_queue')}
               active={view === 'queue' || view === 'ticket'}
               onClick={() => setView('queue')}
             />
@@ -267,7 +282,7 @@ export default function App() {
           {!isStudent && (
             <NavButton
               icon="analytics"
-              label="Problem Analytics"
+              label={t('problem_analytics')}
               active={view === 'operations'}
               onClick={() => setView('operations')}
             />
@@ -275,7 +290,7 @@ export default function App() {
           {!isStudent && (
             <NavButton
               icon="psychology"
-              label="AI intelligence"
+              label={t('ai_intelligence')}
               active={view === 'intelligence'}
               onClick={() => setView('intelligence')}
             />
@@ -283,7 +298,7 @@ export default function App() {
           {session.user.role === 'admin' && (
             <NavButton
               icon="account_tree"
-              label="Routing rules"
+              label={t('routing_rules')}
               active={view === 'routing'}
               onClick={() => setView('routing')}
             />
@@ -291,14 +306,14 @@ export default function App() {
           {session.user.role === 'admin' && (
             <NavButton
               icon="present_to_all"
-              label="Presentation mode"
+              label={t('presentation_mode')}
               active={view === 'presentation'}
               onClick={() => setView('presentation')}
             />
           )}
           <NavButton
             icon="auto_awesome"
-            label="Product Showcase"
+            label={t('product_showcase')}
             active={false}
             onClick={() => setShowLanding(true)}
           />
@@ -306,7 +321,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <div className="local-badge">
             <Symbol name="database" />
-            Local SQLite workspace
+            {t('local_sqlite_workspace')}
           </div>
         </div>
       </aside>
@@ -316,14 +331,15 @@ export default function App() {
           <div className="context">
             <span className="eyebrow">
               {isStudent
-                ? 'Student workspace'
+                ? t('student_workspace')
                 : session.user.role === 'admin'
-                  ? 'Administrator workspace'
-                  : 'Facilities workspace'}
+                  ? t('admin_workspace')
+                  : t('facilities_workspace')}
             </span>
-            <span className="context-campus">Biometric Auth · Multimodal AI · Live Analytics</span>
+            <span className="context-campus">{t('context_campus')}</span>
           </div>
           <div className="account-menu">
+            <LanguageToggle />
             {session.user.role === 'admin' && campusConfig && (
               <button
                 type="button"
@@ -333,7 +349,7 @@ export default function App() {
                 style={{ background: 'rgba(234, 179, 8, 0.15)', borderColor: '#ca8a04', color: '#854d0e' }}
               >
                 <Symbol name="qr_code_2" filled />
-                <span>Campus QR ({campusConfig.code})</span>
+                <span>{t('campus_qr')} ({campusConfig.code})</span>
               </button>
             )}
             {session.user.role === 'admin' && (
@@ -345,7 +361,7 @@ export default function App() {
                 style={{ background: 'var(--md-sys-color-primary-container)', borderColor: 'var(--md-sys-color-primary)', color: 'var(--md-sys-color-on-primary-container)' }}
               >
                 <Symbol name="domain_add" filled />
-                <span>Design Campus</span>
+                <span>{t('design_campus')}</span>
               </button>
             )}
             <button
@@ -355,7 +371,7 @@ export default function App() {
               title="View Digital Identity & Biometric Gateway Pass"
             >
               <Symbol name="badge" filled />
-              <span>Campus ID Pass</span>
+              <span>{t('campus_id_pass')}</span>
             </button>
             <div className="avatar" aria-hidden="true" style={{ overflow: 'hidden' }}>
               {session.user.faceData ? (
@@ -374,8 +390,8 @@ export default function App() {
             <button
               type="button"
               className="icon-button"
-              aria-label="Sign out"
-              title="Sign out"
+              aria-label={t('sign_out')}
+              title={t('sign_out')}
               onClick={signOut}
             >
               <Symbol name="logout" />
@@ -404,7 +420,7 @@ export default function App() {
               user={session.user}
               campusConfig={campusConfig}
               onReport={() => setView('report')}
-              onExploreCampus={() => setView('campus')}
+              onExploreCampus={openCampusView}
               onViewAll={() => setView('tickets')}
               onOpen={openTicket}
             />
@@ -450,6 +466,7 @@ export default function App() {
               onOpenTicket={openTicket}
               isAdmin={session.user.role === 'admin'}
               onOpenArchitect={() => setShowAdminArchitectModal(true)}
+              onClose={() => setView(previousView || 'home')}
             />
           )}
           {view === 'ticket' && selectedTicket && (
@@ -461,7 +478,7 @@ export default function App() {
                 setNotice('Ticket updated. Timeline and notes saved locally.');
               }}
               onBack={() => setView(isStudent ? 'tickets' : 'queue')}
-              onViewCampus={() => setView('campus')}
+              onViewCampus={openCampusView}
             />
           )}
           {view === 'ticket' && !selectedTicket && (
@@ -482,12 +499,12 @@ export default function App() {
             <NavButton icon="space_dashboard" label="Home" active={view === 'home'} onClick={() => setView('home')} />
             <NavButton icon="add_circle" label="Report" active={view === 'report'} onClick={() => setView('report')} />
             <NavButton icon="confirmation_number" label="Tickets" active={view === 'tickets' || view === 'ticket'} onClick={() => setView('tickets')} />
-            <NavButton icon="map" label="Campus" active={view === 'campus'} onClick={() => setView('campus')} />
+            <NavButton icon="map" label="Campus" active={view === 'campus'} onClick={openCampusView} />
           </>
         ) : (
           <>
             <NavButton icon="format_list_bulleted" label="Queue" active={view === 'queue' || view === 'ticket'} onClick={() => setView('queue')} />
-            <NavButton icon="view_in_ar" label="Campus 3D" active={view === 'campus'} onClick={() => setView('campus')} />
+            <NavButton icon="view_in_ar" label="Campus 3D" active={view === 'campus'} onClick={openCampusView} />
             <NavButton icon="analytics" label="Analytics" active={view === 'operations'} onClick={() => setView('operations')} />
             <NavButton icon="psychology" label="AI" active={view === 'intelligence'} onClick={() => setView('intelligence')} />
           </>
@@ -929,6 +946,7 @@ function Login({
   initialTab?: 'signin' | 'signup';
   onShowLanding?: () => void;
 }) {
+  const { t } = useLanguage();
   const [gatewayTab, setGatewayTab] = useState<'signin' | 'signup'>(initialTab);
 
   useEffect(() => {
@@ -1051,17 +1069,21 @@ function Login({
   return (
     <main className="login-page">
       <section className="login-intro">
-        {onShowLanding && (
-          <button
-            type="button"
-            className="landing-back-pill"
-            onClick={onShowLanding}
-            aria-label="Back to Product Showcase and Landing Page"
-          >
-            <Symbol name="arrow_back" />
-            <span>Product Showcase & Overview</span>
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '16px' }}>
+          {onShowLanding && (
+            <button
+              type="button"
+              className="landing-back-pill"
+              onClick={onShowLanding}
+              aria-label="Back to Product Showcase and Landing Page"
+              style={{ margin: 0 }}
+            >
+              <Symbol name="arrow_back" />
+              <span>{t('product_showcase')}</span>
+            </button>
+          )}
+          <LanguageToggle className="pill-light" />
+        </div>
         <div className="brand">
           <div className="brand-mark">
             <Symbol name="domain" filled />
@@ -1069,22 +1091,22 @@ function Login({
           <span>CampusConnect</span>
         </div>
         <div>
-          <span className="eyebrow">Enterprise Identity & Access Management</span>
-          <h1>Unified Campus Auth Gateway</h1>
-          <p>Multi-portal biometric sign-in, self-service user registration, and role-guarded access for students, staff, and administration.</p>
+          <span className="eyebrow">{t('login_intro_eyebrow')}</span>
+          <h1>{t('login_intro_title')}</h1>
+          <p>{t('login_intro_desc')}</p>
         </div>
         <dl className="login-points">
           <div>
-            <dt><Symbol name="shield" filled />Role-Based Gateways</dt>
-            <dd>Dedicated pipelines for Student intake, Staff work orders, and Executive oversight.</dd>
+            <dt><Symbol name="shield" filled />{t('role_gateways_title')}</dt>
+            <dd>{t('role_gateways_desc')}</dd>
           </div>
           <div>
-            <dt><Symbol name="face" filled />Biometric Face Gateway</dt>
-            <dd>Webcam facial landmark matching with local privacy-preserving vectoring.</dd>
+            <dt><Symbol name="face" filled />{t('biometric_gateway_title')}</dt>
+            <dd>{t('biometric_gateway_desc')}</dd>
           </div>
           <div>
-            <dt><Symbol name="lock" filled />Zero-Trust Credentials</dt>
-            <dd>Scrypt password hashing, session tokens, and strict role validation.</dd>
+            <dt><Symbol name="lock" filled />{t('zero_trust_title')}</dt>
+            <dd>{t('zero_trust_desc')}</dd>
           </div>
         </dl>
       </section>
@@ -1096,20 +1118,22 @@ function Login({
             IAM Gateway {gatewayInfo?.status ?? 'Online'} · Encrypted
           </div>
 
+          <LanguageToggle />
+
           <div className="gateway-tabs-bar" role="tablist">
             <button
               type="button"
               className={`gateway-tab-btn ${gatewayTab === 'signin' ? 'active' : ''}`}
               onClick={() => { setGatewayTab('signin'); setError(null); }}
             >
-              <Symbol name="login" /> Sign In Gateway
+              <Symbol name="login" /> {t('sign_in_gateway')}
             </button>
             <button
               type="button"
               className={`gateway-tab-btn ${gatewayTab === 'signup' ? 'active' : ''}`}
               onClick={() => { setGatewayTab('signup'); setError(null); }}
             >
-              <Symbol name="person_add" /> Create Account
+              <Symbol name="person_add" /> {t('create_account_tab')}
             </button>
           </div>
         </div>
@@ -1118,8 +1142,8 @@ function Login({
           <form className="login-form" onSubmit={handleSignin}>
             <div>
               <span className="eyebrow">Authentication Gateway</span>
-              <h2>Sign in to Campus Portal</h2>
-              <p>Choose your target portal gateway or enter credentials.</p>
+              <h2>{t('sign_in_heading')}</h2>
+              <p>{t('sign_in_sub')}</p>
             </div>
 
             {/* Role Portal Selector */}
@@ -1133,7 +1157,7 @@ function Login({
                 }}
               >
                 <Symbol name="school" filled={signinRole === 'student'} />
-                <span className="portal-title">Student Portal</span>
+                <span className="portal-title">{t('student_portal_btn')}</span>
                 <span className="portal-desc">Reports & Radar</span>
               </button>
               <button
@@ -1145,7 +1169,7 @@ function Login({
                 }}
               >
                 <Symbol name="engineering" filled={signinRole === 'staff'} />
-                <span className="portal-title">Facilities Staff</span>
+                <span className="portal-title">{t('staff_portal_btn')}</span>
                 <span className="portal-desc">3D Twin & Triage</span>
               </button>
               <button
@@ -1157,7 +1181,7 @@ function Login({
                 }}
               >
                 <Symbol name="admin_panel_settings" filled={signinRole === 'admin'} />
-                <span className="portal-title">Admin Gateway</span>
+                <span className="portal-title">{t('admin_portal_btn')}</span>
                 <span className="portal-desc">Campus Architecture & QR</span>
               </button>
             </div>
@@ -1182,7 +1206,7 @@ function Login({
             {/* Campus Code Input - Only required for Student and Staff, NOT asked for Admin */}
             {signinRole !== 'admin' && (
               <label>
-                Campus Institutional Access Code
+                {t('campus_code_field')}
                 <div className="campus-code-input-wrap">
                   <Symbol name="domain_verification" />
                   <input
@@ -1204,7 +1228,7 @@ function Login({
             )}
 
             <label>
-              Email Address
+              {t('email_address')}
               <input
                 name="email"
                 type="email"
@@ -1216,7 +1240,7 @@ function Login({
               />
             </label>
             <label>
-              Password
+              {t('password')}
               <input
                 name="password"
                 type="password"
@@ -1238,11 +1262,11 @@ function Login({
               {submitting ? (
                 <>
                   <span className="spinner" />
-                  Verifying Gateway Credentials…
+                  {t('signing_in')}
                 </>
               ) : (
                 <>
-                  Sign in through Gateway
+                  {t('sign_in_button')}
                   <Symbol name="arrow_forward" />
                 </>
               )}
@@ -1254,7 +1278,7 @@ function Login({
               onClick={() => setAuthMode('face')}
             >
               <Symbol name="face" filled />
-              Launch Biometric Face ID
+              {t('face_sign_in_btn')}
             </button>
 
             <div className="gateway-status-footer">
@@ -1472,6 +1496,7 @@ function StudentOverview({
   onViewAll: () => void;
   onOpen: (id: string) => void;
 }) {
+  const { t } = useLanguage();
   const active = tickets.filter((ticket) => ticket.status !== 'resolved');
   const inProgress = tickets.filter((ticket) => ticket.status === 'in_progress');
   const resolved = tickets.filter((ticket) => ticket.status === 'resolved');
@@ -1486,7 +1511,7 @@ function StudentOverview({
           <div className="overview-hero-badge-row">
             <span className="m3-badge status-live">
               <span className="live-dot" />
-              Central Campus • Active Monitoring
+              {t('active_monitoring')}
             </span>
             <span className="m3-badge campus-pill" title="Institutional Gateway Code">
               <Symbol name="domain" />
@@ -1495,20 +1520,20 @@ function StudentOverview({
           </div>
 
           <h1 className="overview-hero-title">
-            Welcome back, {firstName}
+            {t('welcome_back_user', { name: firstName })}
           </h1>
           <p className="overview-hero-sub">
-            Facilities triage, smart visual auto-diagnosis, and immediate maintenance dispatch for your university.
+            {t('overview_hero_sub')}
           </p>
 
           <div className="overview-hero-actions">
             <button type="button" className="button primary m3-btn-elevated" onClick={onReport}>
               <Symbol name="add_circle" filled />
-              <span>Report an issue</span>
+              <span>{t('report_an_issue')}</span>
             </button>
             <button type="button" className="button secondary m3-btn-tonal" onClick={onExploreCampus}>
               <Symbol name="view_in_ar" />
-              <span>Campus 3D View</span>
+              <span>{t('campus_3d_view_btn')}</span>
             </button>
           </div>
         </div>
@@ -1522,10 +1547,10 @@ function StudentOverview({
       <section className="overview-section">
         <div className="overview-section-header">
           <div>
-            <span className="eyebrow">Quick Intake</span>
-            <h2>How would you like to report?</h2>
+            <span className="eyebrow">{t('quick_intake_eyebrow')}</span>
+            <h2>{t('how_to_report_heading')}</h2>
           </div>
-          <span className="overview-hint">Powered by Multimodal Gemini</span>
+          <span className="overview-hint">{t('gemini_hint')}</span>
         </div>
 
         <div className="overview-launchpad-grid">
@@ -1535,11 +1560,11 @@ function StudentOverview({
             </div>
             <div className="launch-card-body">
               <div className="launch-card-title-row">
-                <h3>Visual Problem Auto-Detection</h3>
+                <h3>{t('visual_card_title')}</h3>
                 <span className="launch-arrow"><Symbol name="arrow_forward" /></span>
               </div>
               <p>
-                Snap or upload photos of broken fixtures, leaks, or electrical hazards. Multimodal AI automatically categorizes and routes the ticket.
+                {t('visual_card_desc')}
               </p>
               <div className="launch-tags">
                 <span className="launch-tag">Instant Analysis</span>
@@ -1554,11 +1579,11 @@ function StudentOverview({
             </div>
             <div className="launch-card-body">
               <div className="launch-card-title-row">
-                <h3>Voice & Natural Text Intake</h3>
+                <h3>{t('voice_card_title')}</h3>
                 <span className="launch-arrow"><Symbol name="arrow_forward" /></span>
               </div>
               <p>
-                Speak naturally using your microphone or write in everyday language. Smart triage extracts location details and dispatches immediately.
+                {t('voice_card_desc')}
               </p>
               <div className="launch-tags">
                 <span className="launch-tag">Voice Dictation</span>

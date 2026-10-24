@@ -17,7 +17,6 @@ import type {
 
 const sessionKey = 'campusconnect-session';
 const usersStorageKey = 'campusconnect_cloud_users';
-const ticketsStorageKey = 'campusconnect_cloud_tickets';
 
 const envBase = (import.meta as unknown as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE;
 // If VITE_API_BASE is set, use it; otherwise use relative /api
@@ -195,7 +194,15 @@ function saveCampusConfig(cfg: CampusConfig) {
   localStorage.setItem(campusConfigStorageKey, JSON.stringify(cfg));
 }
 
-function getStoredTickets(): Ticket[] {
+const ticketsStorageKey = 'campusconnect_cloud_tickets';
+
+export function getUserTicketsKey(_user?: SessionUser | LocalUser | null): string {
+  void _user;
+  return ticketsStorageKey;
+}
+
+export function getStoredTickets(_user?: SessionUser | LocalUser | null): Ticket[] {
+  void _user;
   try {
     const raw = localStorage.getItem(ticketsStorageKey);
     if (!raw) {
@@ -214,12 +221,25 @@ function getStoredTickets(): Ticket[] {
   }
 }
 
-function saveTickets(tickets: Ticket[]) {
+export function saveTickets(tickets: Ticket[], _user?: SessionUser | LocalUser | null) {
+  void _user;
   localStorage.setItem(ticketsStorageKey, JSON.stringify(tickets));
 }
 
+async function hashPassword(password: string): Promise<string> {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  return password;
+}
+
 // Client Fallback Dispatcher
-function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
+async function handleClientFallback<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? 'GET').toUpperCase();
   const session = getStoredSession();
   const body = init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
@@ -283,10 +303,15 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
   if (path === '/api/auth/login' && method === 'POST') {
     const email = String(body.email ?? '').toLowerCase().trim();
     const password = String(body.password ?? '').trim();
+    const hashed = await hashPassword(password);
     const users = getStoredUsers();
-    const found = users.find((u) => u.email.toLowerCase() === email && (u.password === password || password === 'campus123'));
+    const found = users.find((u) => u.email.toLowerCase() === email && (u.password === hashed || u.password === password));
     if (!found) {
-      throw new ApiError('Email or password is incorrect. (Use campus123 for demo accounts)');
+      throw new ApiError('Email or password is incorrect.');
+    }
+    if (found.password === password && found.password !== hashed) {
+      found.password = hashed;
+      localStorage.setItem(usersStorageKey, JSON.stringify(users));
     }
 
     // Only non-admin accounts require the institutional campus code
@@ -332,19 +357,23 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
     const email = String(body.email ?? '').toLowerCase().trim();
     const name = String(body.name ?? '').trim();
     const password = String(body.password ?? '').trim();
+    if (!password) {
+      throw new ApiError('Password is required.');
+    }
     const faceData = body.faceData ? String(body.faceData) : undefined;
     const users = getStoredUsers();
     if (users.some((u) => u.email.toLowerCase() === email)) {
       throw new ApiError('An account with this email address already exists in the campus directory.');
     }
 
+    const hashedPassword = await hashPassword(password);
     const memberId = `CC-ID-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const newUser: LocalUser = {
       id: `usr-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: name || 'Campus User',
       email,
       role,
-      password: password || 'campus123',
+      password: hashedPassword,
       faceData,
       memberId,
     };
@@ -386,14 +415,20 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
 
   // 4. Authentication: Face Login
   if (path === '/api/auth/face-login' && method === 'POST') {
-    const identifier = String(body.identifier ?? '').toLowerCase();
+    const identifier = String(body.identifier ?? '').toLowerCase().trim();
     const faceData = body.faceData ? String(body.faceData) : undefined;
-    const users = getStoredUsers();
-    let found = users.find((u) => u.email.toLowerCase() === identifier || u.id === identifier || u.memberId?.toLowerCase() === identifier);
-    if (!found) {
-      found = users.find((u) => u.email.toLowerCase().includes(identifier) || u.role.toLowerCase() === identifier) ?? users[0];
+    if (!faceData) {
+      throw new ApiError('Biometric face data is required for face authentication.');
     }
-    if (faceData && !found.faceData) {
+    const users = getStoredUsers();
+    const found = users.find((u) => u.email.toLowerCase() === identifier || u.id === identifier || u.memberId?.toLowerCase() === identifier);
+    if (!found) {
+      throw new ApiError('Facial identity was not recognized. Please try again or use password.');
+    }
+    if (found.faceData && found.faceData !== faceData) {
+      throw new ApiError('Facial biometric verification failed: face data does not match enrolled template.');
+    }
+    if (!found.faceData && faceData) {
       found.faceData = faceData;
       localStorage.setItem(usersStorageKey, JSON.stringify(users));
     }
@@ -416,6 +451,9 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
 
   // 4b. Enrolled Users List
   if (path === '/api/auth/enrolled-users' && method === 'GET') {
+    if (!session || session.user.role !== 'admin') {
+      throw new ApiError('You do not have permission for this action.');
+    }
     const users = getStoredUsers();
     return {
       users: users.map((u) => ({
@@ -425,7 +463,6 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
         role: u.role,
         memberId: u.memberId ?? `CC-ID-2026-${u.id.slice(-4)}`,
         hasFaceEnrolled: Boolean(u.faceData) || u.id.startsWith('usr-'),
-        faceData: u.faceData,
       })),
     } as T;
   }
@@ -469,7 +506,7 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
     const tickets = getStoredTickets();
     if (session?.user.role === 'student') {
       const myTickets = tickets.filter((t) => t.reporterId === session.user.uid || t.reporterName === session.user.name);
-      return { tickets: myTickets.length > 0 ? myTickets : tickets } as T;
+      return { tickets: myTickets } as T;
     }
     return { tickets } as T;
   }
@@ -991,7 +1028,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   // On Google static CDN hosting without dedicated backend rewrite, run instantly via resilient client cloud engine
   if (isPureStaticHosting) {
-    return handleClientFallback<T>(path, init);
+    return await handleClientFallback<T>(path, init);
   }
 
   const session = getStoredSession();
@@ -1027,7 +1064,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   // 2. Client Cloud Engine Fallback (Zero network failure, 100% uptime on Google Hosting)
-  return handleClientFallback<T>(path, init);
+  return await handleClientFallback<T>(path, init);
 }
 
 export const api = {

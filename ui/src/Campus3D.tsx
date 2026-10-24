@@ -140,6 +140,7 @@ export interface Campus3DProps {
   onOpenTicket?: (ticketId: string) => void;
   isAdmin?: boolean;
   onOpenArchitect?: () => void;
+  onClose?: () => void;
 }
 
 export default function Campus3D({
@@ -147,6 +148,7 @@ export default function Campus3D({
   onOpenTicket,
   isAdmin = false,
   onOpenArchitect,
+  onClose,
 }: Campus3DProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [campusBuildings, setCampusBuildings] = useState<CampusBuildingData[]>(() => getCampusBuildings());
@@ -241,8 +243,8 @@ export default function Campus3D({
 
   // Selected building object
   const selectedBuilding = useMemo(() => {
-    if (!selectedBuildingId) return campusBuildings[0] ?? null;
-    return campusBuildings.find((b) => b.id === selectedBuildingId) ?? campusBuildings[0] ?? null;
+    if (!selectedBuildingId) return null;
+    return campusBuildings.find((b) => b.id === selectedBuildingId) ?? null;
   }, [selectedBuildingId, campusBuildings]);
 
   // Selected building's technician (if any)
@@ -973,6 +975,21 @@ export default function Campus3D({
               <span>Design Campus</span>
             </button>
           )}
+
+          {onClose && (
+            <button
+              type="button"
+              className="button secondary sm close-campus-btn"
+              onClick={() => {
+                playSound('click');
+                onClose();
+              }}
+              title="Close 3D View and return to dashboard"
+            >
+              <Symbol name="close" />
+              <span>Close 3D View</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1059,7 +1076,10 @@ export default function Campus3D({
                     type="button"
                     className="icon-button close-drawer-btn"
                     aria-label="Close details"
-                    onClick={() => setSelectedBuildingId(null)}
+                    onClick={() => {
+                      playSound('click');
+                      setSelectedBuildingId(null);
+                    }}
                   >
                     <Symbol name="close" />
                   </button>

@@ -13,6 +13,12 @@ export const translations: Translations = {
   // Global brand & navigation
   brand_name: { en: 'CampusConnect', hi: 'कैंपसकनेक्ट' },
   brand_sub: { en: 'Autonomous Facilities Platform', hi: 'स्वायत्त सुविधाएं प्लेटफॉर्म' },
+  nav_features: { en: 'Features', hi: 'विशेषताएं' },
+  nav_ai_engine: { en: 'AI Engine', hi: 'एआई इंजन' },
+  nav_pipeline: { en: 'AI Engine', hi: 'एआई इंजन' },
+  nav_3d_twin: { en: '3D Twin', hi: '3D ट्विन' },
+  nav_portals: { en: 'Portals', hi: 'पोर्टल' },
+  nav_faq: { en: 'FAQ', hi: 'प्रश्नोत्तरी' },
   overview: { en: 'Overview', hi: 'अवलोकन' },
   report_an_issue: { en: 'Report an issue', hi: 'समस्या दर्ज करें' },
   my_tickets: { en: 'My tickets', hi: 'मेरी शिकायतें' },

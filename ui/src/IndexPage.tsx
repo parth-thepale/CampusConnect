@@ -29,6 +29,7 @@ export default function IndexPage({
   const [activeSimStep, setActiveSimStep] = useState<number>(0);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
   const [scrolled, setScrolled] = useState(false);
+  const [activeSection, setActiveSection] = useState<string>('pipeline');
 
   const campusCode = campusConfig?.code || 'CAMPUS-2026';
   const campusName = campusConfig?.name || 'Central University';
@@ -40,6 +41,42 @@ export default function IndexPage({
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    const sectionIds = ['pipeline', 'features', 'roles', 'faq'];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id);
+          }
+        }
+      },
+      { rootMargin: '-20% 0px -60% 0px', threshold: 0.1 }
+    );
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const handleNavClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    targetId: string,
+    featureTab?: 'multimodal' | 'twin3d'
+  ) => {
+    e.preventDefault();
+    if (featureTab) {
+      setActiveFeatureTab(featureTab);
+    }
+    const targetEl = document.getElementById(targetId);
+    if (targetEl) {
+      targetEl.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   // Auto-advance the interactive simulation if user hasn't clicked
   useEffect(() => {
@@ -197,11 +234,46 @@ export default function IndexPage({
           </div>
 
           <nav className="index-nav-links" aria-label="Index page navigation">
-            <a href="#features">{t('nav_features')}</a>
-            <a href="#pipeline">{t('nav_ai_engine')}</a>
-            <a href="#spatial-twin">{t('nav_3d_twin')}</a>
-            <a href="#roles">{t('nav_portals')}</a>
-            <a href="#faq">{t('nav_faq')}</a>
+            <a
+              href="#pipeline"
+              className={activeSection === 'pipeline' ? 'active' : ''}
+              onClick={(e) => handleNavClick(e, 'pipeline')}
+            >
+              <Symbol name="psychology" />
+              <span>{t('nav_ai_engine')}</span>
+            </a>
+            <a
+              href="#features"
+              className={activeSection === 'features' && activeFeatureTab !== 'twin3d' ? 'active' : ''}
+              onClick={(e) => handleNavClick(e, 'features', 'multimodal')}
+            >
+              <Symbol name="auto_awesome" />
+              <span>{t('nav_features')}</span>
+            </a>
+            <a
+              href="#features"
+              className={activeSection === 'features' && activeFeatureTab === 'twin3d' ? 'active' : ''}
+              onClick={(e) => handleNavClick(e, 'features', 'twin3d')}
+            >
+              <Symbol name="view_in_ar" />
+              <span>{t('nav_3d_twin')}</span>
+            </a>
+            <a
+              href="#roles"
+              className={activeSection === 'roles' ? 'active' : ''}
+              onClick={(e) => handleNavClick(e, 'roles')}
+            >
+              <Symbol name="groups" />
+              <span>{t('nav_portals')}</span>
+            </a>
+            <a
+              href="#faq"
+              className={activeSection === 'faq' ? 'active' : ''}
+              onClick={(e) => handleNavClick(e, 'faq')}
+            >
+              <Symbol name="help" />
+              <span>{t('nav_faq')}</span>
+            </a>
           </nav>
 
           <div className="index-nav-actions">
@@ -1037,11 +1109,12 @@ export default function IndexPage({
 
           <div className="footer-links-group">
             <div className="footer-col">
-              <h4>{t('nav_portals')}</h4>
-              <a href="#pipeline">{t('nav_ai_engine')}</a>
-              <a href="#features">{t('nav_features')}</a>
-              <a href="#roles">{t('nav_portals')}</a>
-              <a href="#faq">{t('nav_faq')}</a>
+              <h4>{t('overview')}</h4>
+              <a href="#pipeline" onClick={(e) => handleNavClick(e, 'pipeline')}>{t('nav_ai_engine')}</a>
+              <a href="#features" onClick={(e) => handleNavClick(e, 'features', 'multimodal')}>{t('nav_features')}</a>
+              <a href="#features" onClick={(e) => handleNavClick(e, 'features', 'twin3d')}>{t('nav_3d_twin')}</a>
+              <a href="#roles" onClick={(e) => handleNavClick(e, 'roles')}>{t('nav_portals')}</a>
+              <a href="#faq" onClick={(e) => handleNavClick(e, 'faq')}>{t('nav_faq')}</a>
             </div>
             <div className="footer-col">
               <h4>Security & IAM</h4>

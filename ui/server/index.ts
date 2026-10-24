@@ -1,19 +1,17 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
-import { randomBytes } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { analyzeComplaint, autoWriteText, chatWithAi, compareCandidates, detectProblemFromImage, operationsPulse, triageTicket } from './ai.js';
-import { addCampusId, authenticateFace, authenticateLocal, createTicket, decideDuplicate, detailedAnalytics, findCandidates, gatewayStats, getAllTickets, getCampusConfig, getTicket, initStore, listCampusIds, listEnrolledUsers, listTickets, metrics, registerUser, routingRules, saveCampusConfig, submitStudentFeedback, updateTicket, updateUserFace, verifyCampusCode } from './store.js';
+import { addCampusId, authenticateFace, authenticateLocal, countActiveSessions, createSession, createTicket, decideDuplicate, deleteSession, detailedAnalytics, findCandidates, gatewayStats, getAllTickets, getCampusConfig, getSession, getTicket, initStore, listCampusIds, listEnrolledUsers, listTickets, metrics, registerUser, routingRules, saveCampusConfig, submitStudentFeedback, updateTicket, updateUserFace, verifyCampusCode } from './store.js';
 import { categories, statuses, type Category, type SessionUser, type TicketStatus } from '../src/types.js';
 
 initStore();
 
 const app = express();
 const port = Number(process.env.PORT ?? 3001);
-const sessions = new Map<string, SessionUser>();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -21,7 +19,7 @@ declare module 'express-serve-static-core' { interface Request { user?: SessionU
 
 function sessionFromRequest(req: Request) {
   const token = req.header('authorization')?.replace(/^Bearer\s+/i, '');
-  return token ? sessions.get(token) : undefined;
+  return token ? getSession(token) ?? undefined : undefined;
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -95,7 +93,7 @@ app.get('/api/auth/gateway-status', (_req, res) => {
     gateway: 'CampusConnect IAM Gateway',
     status: 'ONLINE',
     protocol: 'Bearer Token / TLS 1.3 / SHA-256 Biometrics',
-    activeSessions: sessions.size,
+    activeSessions: countActiveSessions(),
     stats: gatewayStats(),
   });
 });
@@ -124,7 +122,7 @@ app.post('/api/campus/generate-code', requireAuth, requireRole('admin'), (req, r
   res.json({ config, message: `Campus gateway bound to code ${config.code}.` });
 });
 
-app.get('/api/auth/enrolled-users', (_req, res) => {
+app.get('/api/auth/enrolled-users', requireAuth, requireRole('admin'), (_req, res) => {
   res.json({ users: listEnrolledUsers() });
 });
 
@@ -133,11 +131,6 @@ app.post('/api/auth/enroll-face', requireAuth, (req, res) => {
   if (!input) return;
   const updated = updateUserFace(req.user!, input.faceData);
   req.user = updated;
-  for (const [token, user] of sessions.entries()) {
-    if (user.uid === updated.uid) {
-      sessions.set(token, updated);
-    }
-  }
   res.json({ user: updated, message: 'Webcam biometric face key successfully registered in campus gateway.' });
 });
 
@@ -150,8 +143,7 @@ app.post('/api/auth/signup', (req, res) => {
       verifyCampusCode(input.campusCode);
     }
     const user = registerUser(input);
-    const token = randomBytes(32).toString('hex');
-    sessions.set(token, user);
+    const token = createSession(user);
     res.status(201).json({ token, user, message: 'Account successfully registered in campus gateway.' });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Registration failed.';
@@ -174,18 +166,18 @@ app.post('/api/auth/login', (req, res) => {
       return res.status(400).json({ error: { code: 'INVALID_CAMPUS_CODE', message } });
     }
   }
-  const token = randomBytes(32).toString('hex'); sessions.set(token, user);
+  const token = createSession(user);
   res.json({ token, user });
 });
 
 app.post('/api/auth/face-login', (req, res) => {
   const input = valid(faceLoginSchema, req.body, res); if (!input) return;
   const user = authenticateFace(input.identifier, input.faceData);
-  if (!user) return res.status(401).json({ error: { code: 'BIOMETRIC_FAILED', message: 'Facial identity was not recognized. Please try again or use password.' } });
-  const token = randomBytes(32).toString('hex'); sessions.set(token, user);
+  if (!user) return res.status(401).json({ error: { code: 'BIOMETRIC_FAILED', message: 'Facial identity was not recognized or biometric data is invalid. Please try again or use password.' } });
+  const token = createSession(user);
   res.json({ token, user, method: 'facial_recognition' });
 });
-app.post('/api/auth/logout', requireAuth, (req, res) => { const token = req.header('authorization')?.replace(/^Bearer\s+/i, ''); if (token) sessions.delete(token); res.status(204).end(); });
+app.post('/api/auth/logout', requireAuth, (req, res) => { const token = req.header('authorization')?.replace(/^Bearer\s+/i, ''); if (token) deleteSession(token); res.status(204).end(); });
 app.get('/api/auth/me', requireAuth, (req, res) => res.json({ user: req.user }));
 
 app.get('/api/tickets', requireAuth, (req, res) => res.json({ tickets: listTickets(req.user!) }));
@@ -270,6 +262,12 @@ const agentToolSchema = z.object({
 
 // Dedicated Google AI Studio Agent tool execution webhook
 app.post('/api/ai/agent-tools', async (req, res, next) => {
+  const secret = process.env.AGENT_SECRET || process.env.AI_AGENT_SECRET || 'campusconnect-agent-secret-2026';
+  const authHeader = req.header('authorization')?.replace(/^Bearer\s+/i, '');
+  const agentSig = req.header('x-goog-agent-signature');
+  if (authHeader !== secret && agentSig !== secret) {
+    return res.status(401).json({ error: { code: 'UNAUTHORIZED_WEBHOOK', message: 'Invalid or missing agent webhook signature / secret.' } });
+  }
   const input = valid(agentToolSchema, req.body, res);
   if (!input) return;
   try {

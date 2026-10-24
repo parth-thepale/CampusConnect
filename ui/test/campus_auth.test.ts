@@ -112,19 +112,23 @@ test('6. User registration with webcam biometric face key', () => {
 });
 
 test('7. Biometric Facial Recognition login gateway verification', () => {
-  // Biometric login via email
-  const faceAuth1 = authenticateFace('rohan.student@campusconnect.edu');
-  assert.ok(faceAuth1, 'Face login should verify by email');
+  const dummyFaceData = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP...biometric_template...';
+  // Biometric login via email with matching enrolled faceData
+  const faceAuth1 = authenticateFace('rohan.student@campusconnect.edu', dummyFaceData);
+  assert.ok(faceAuth1, 'Face login should verify by email with matching faceData');
   assert.equal(faceAuth1?.name, 'Rohan Sharma');
 
-  // Biometric login via role shorthand
-  const faceAuthAdmin = authenticateFace('admin');
-  assert.ok(faceAuthAdmin, 'Face login should verify admin role');
-  assert.equal(faceAuthAdmin?.role, 'admin');
+  // Role shorthand must NOT bypass authentication
+  const faceAuthAdmin = authenticateFace('admin', dummyFaceData);
+  assert.equal(faceAuthAdmin, null, 'Face login must reject role shorthand without registered credentials');
 
   // Biometric login rejects unknown user
-  const faceAuthUnknown = authenticateFace('unknown-stranger@external.com');
+  const faceAuthUnknown = authenticateFace('unknown-stranger@external.com', dummyFaceData);
   assert.equal(faceAuthUnknown, null, 'Unknown face vector must be rejected');
+
+  // Biometric login rejects missing faceData
+  const faceAuthNoData = authenticateFace('rohan.student@campusconnect.edu');
+  assert.equal(faceAuthNoData, null, 'Missing faceData must be rejected');
 });
 
 test('8. Enrolled Users Directory returns all credentials and face enrollment flags', () => {
@@ -135,6 +139,7 @@ test('8. Enrolled Users Directory returns all credentials and face enrollment fl
   assert.ok(rohan, 'Rohan must be present in gateway directory');
   assert.equal(rohan?.hasFaceEnrolled, true, 'Face enrollment flag must be true');
   assert.ok(rohan?.memberId.startsWith('CC-ID-2026-'), 'Member ID pass must be properly formatted');
+  assert.equal('faceData' in (rohan ?? {}), false, 'faceData must be stripped from public directory records');
 });
 
 test('9. Face key enrollment update for existing authenticated session', () => {
@@ -143,7 +148,7 @@ test('9. Face key enrollment update for existing authenticated session', () => {
   const updated = updateUserFace(student, updatedFace);
   assert.equal(updated.faceData, updatedFace);
 
-  const verified = authenticateFace('rohan.student@campusconnect.edu');
+  const verified = authenticateFace('rohan.student@campusconnect.edu', updatedFace);
   assert.equal(verified?.faceData, updatedFace);
 });
 
