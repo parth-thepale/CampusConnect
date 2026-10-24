@@ -108,37 +108,25 @@ function getCampusConfig(): CampusConfig {
       if (admin) {
         parsed.isInitialized = true;
         parsed.adminEmail = admin.email;
-        if (!parsed.qrPayload) parsed.qrPayload = `${origin}?campus=${parsed.code}`;
-        return parsed;
       }
+      if (!parsed.code) parsed.code = 'CAMPUS-2026';
+      if (!parsed.qrPayload) parsed.qrPayload = `${origin}?campus=${parsed.code}`;
+      return parsed;
     }
   } catch {
     /* fallback */
   }
 
-  // If an admin exists, initialize default code if not present
-  if (admin) {
-    const cfg: CampusConfig = {
-      code: 'CAMPUS-2026',
-      name: 'CampusConnect Central University',
-      qrPayload: `${origin}?campus=CAMPUS-2026`,
-      adminEmail: admin.email,
-      createdAt: new Date().toISOString(),
-      isInitialized: true,
-    };
-    localStorage.setItem(campusConfigStorageKey, JSON.stringify(cfg));
-    return cfg;
-  }
-
-  // If NO admin exists, campus is uninitialized
-  return {
-    code: '',
-    name: 'CampusConnect University',
-    qrPayload: '',
-    adminEmail: '',
-    createdAt: '',
-    isInitialized: false,
+  const defaultCode = 'CAMPUS-2026';
+  const cfg: CampusConfig = {
+    code: defaultCode,
+    name: 'CampusConnect Central University',
+    qrPayload: `${origin}?campus=${defaultCode}`,
+    adminEmail: admin ? admin.email : '',
+    createdAt: new Date().toISOString(),
+    isInitialized: Boolean(admin),
   };
+  return cfg;
 }
 
 function saveCampusConfig(cfg: CampusConfig) {
@@ -217,19 +205,6 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
 
   // 2. Authentication: Login
   if (path === '/api/auth/login' && method === 'POST') {
-    const campusConfig = getCampusConfig();
-    const providedCode = String(body.campusCode ?? '').trim().toUpperCase();
-
-    // Check if campus is initialized
-    if (!campusConfig.isInitialized) {
-      throw new ApiError('Campus gateway not yet initialized. Please register the founding University Administrator account to generate the Campus Code & QR pass.');
-    }
-
-    // Verify campus code
-    if (providedCode !== campusConfig.code.toUpperCase()) {
-      throw new ApiError(`Invalid Campus Code "${providedCode || '(empty)'}". Please scan your university QR code or enter the code provided by your administrator.`);
-    }
-
     const email = String(body.email ?? '').toLowerCase().trim();
     const password = String(body.password ?? '').trim();
     const users = getStoredUsers();
@@ -237,6 +212,17 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
     if (!found) {
       throw new ApiError('Email or password is incorrect. (Use campus123 for demo accounts)');
     }
+
+    // Only non-admin accounts require the institutional campus code
+    if (found.role !== 'admin') {
+      const campusConfig = getCampusConfig();
+      const providedCode = String(body.campusCode ?? '').trim().toUpperCase();
+      const expectedCode = (campusConfig.code || 'CAMPUS-2026').toUpperCase();
+      if (!providedCode || providedCode !== expectedCode) {
+        throw new ApiError(`Invalid or missing Campus Code. Please enter valid institutional code (${expectedCode}) or scan your campus QR pass.`);
+      }
+    }
+
     const token = `token-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     return {
       token,
@@ -255,19 +241,15 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
 
   // 3. Authentication: Signup
   if (path === '/api/auth/signup' && method === 'POST') {
-    const campusConfig = getCampusConfig();
     const role = (body.role as Role) ?? 'student';
     const providedCode = String(body.campusCode ?? '').trim().toUpperCase();
 
-    // If campus is NOT initialized yet, the first user MUST be an Admin who initializes the campus!
-    if (!campusConfig.isInitialized) {
-      if (role !== 'admin') {
-        throw new ApiError('Campus gateway not initialized. The first user must register as a University Administrator to generate the Campus Code & QR Gateway.');
-      }
-    } else {
-      // Campus is initialized: campusCode is mandatory
-      if (providedCode !== campusConfig.code.toUpperCase()) {
-        throw new ApiError(`Invalid Campus Code "${providedCode || '(empty)'}". Please scan your university QR code or ask your campus administrator.`);
+    // Only non-admin registrations require the institutional campus code
+    if (role !== 'admin') {
+      const campusConfig = getCampusConfig();
+      const expectedCode = (campusConfig.code || 'CAMPUS-2026').toUpperCase();
+      if (!providedCode || providedCode !== expectedCode) {
+        throw new ApiError(`Invalid or missing Campus Code. Please enter valid institutional code (${expectedCode}) or scan your campus QR pass.`);
       }
     }
 
@@ -292,14 +274,16 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
     };
     saveUser(newUser);
 
-    // If this was the founding admin, initialize the campus code and QR now!
-    if (role === 'admin' && !campusConfig.isInitialized) {
-      const generatedCode = providedCode || `CAMPUS-${Math.floor(1000 + Math.random() * 9000)}`;
+    // If an admin registers, initialize or update campus config
+    if (role === 'admin') {
+      const campusConfig = getCampusConfig();
       const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://campusconnect-ff8f1.web.app';
+      const updatedCode = campusConfig.code || 'CAMPUS-2026';
       const newConfig: CampusConfig = {
-        code: generatedCode,
-        name: `${name}'s Campus Network`,
-        qrPayload: `${origin}?campus=${generatedCode}`,
+        ...campusConfig,
+        code: updatedCode,
+        name: campusConfig.name || `${name}'s Campus Network`,
+        qrPayload: `${origin}?campus=${updatedCode}`,
         adminEmail: email,
         createdAt: new Date().toISOString(),
         isInitialized: true,
@@ -326,10 +310,6 @@ function handleClientFallback<T>(path: string, init: RequestInit = {}): T {
 
   // 4. Authentication: Face Login
   if (path === '/api/auth/face-login' && method === 'POST') {
-    const campusConfig = getCampusConfig();
-    if (!campusConfig.isInitialized) {
-      throw new ApiError('Campus gateway not yet initialized. Please register the founding University Administrator account.');
-    }
     const identifier = String(body.identifier ?? '').toLowerCase();
     const faceData = body.faceData ? String(body.faceData) : undefined;
     const users = getStoredUsers();

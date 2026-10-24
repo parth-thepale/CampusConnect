@@ -133,9 +133,8 @@ app.post('/api/auth/signup', (req, res) => {
   const input = valid(signupSchema, req.body, res);
   if (!input) return;
   try {
-    const cfg = getCampusConfig();
-    // Allow uninitialized gateway if founding admin is signing up
-    if (cfg.isInitialized || input.role !== 'admin') {
+    // Admin registration never requires a campus code; student and staff do!
+    if (input.role !== 'admin') {
       verifyCampusCode(input.campusCode);
     }
     const user = registerUser(input);
@@ -150,14 +149,19 @@ app.post('/api/auth/signup', (req, res) => {
 
 app.post('/api/auth/login', (req, res) => {
   const input = valid(loginSchema, req.body, res); if (!input) return;
-  try {
-    verifyCampusCode(input.campusCode);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Invalid campus code.';
-    return res.status(400).json({ error: { code: 'INVALID_CAMPUS_CODE', message } });
-  }
   const user = authenticateLocal(input.email, input.password);
-  if (!user) return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.' } });
+  if (!user) {
+    return res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.' } });
+  }
+  // Admin login never requires a campus code; student and staff do!
+  if (user.role !== 'admin') {
+    try {
+      verifyCampusCode(input.campusCode);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Invalid campus code.';
+      return res.status(400).json({ error: { code: 'INVALID_CAMPUS_CODE', message } });
+    }
+  }
   const token = randomBytes(32).toString('hex'); sessions.set(token, user);
   res.json({ token, user });
 });

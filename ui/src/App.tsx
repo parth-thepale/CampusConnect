@@ -18,6 +18,7 @@ import Chatbot from './Chatbot';
 import Campus3D from './Campus3D';
 import CampusQr from './CampusQr';
 import CampusArchitectModal from './CampusArchitectModal';
+import IndexPage from './IndexPage';
 import { playSound } from './audio';
 import { exportTicketsCsv, printExecutiveReport } from './exportReports';
 
@@ -72,6 +73,26 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(getStoredSession()));
+  const [loginTab, setLoginTab] = useState<'signin' | 'signup'>('signin');
+  const [showLanding, setShowLanding] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('landing') === 'true' || window.location.hash === '#landing') {
+        return true;
+      }
+      if (params.get('login') === 'true' || window.location.hash === '#login') {
+        return false;
+      }
+      // If user has an active session, open normally into the overview tab!
+      if (getStoredSession()) {
+        return false;
+      }
+      // If user is brand new (never visited before), show the index page on top
+      const visited = localStorage.getItem('campusconnect_visited');
+      return !visited;
+    }
+    return false;
+  });
 
   useEffect(() => {
     api.campusConfig()
@@ -141,7 +162,35 @@ export default function App() {
   const replaceTicket = (ticket: Ticket) =>
     setTickets((current) => [ticket, ...current.filter((item) => item.id !== ticket.id)]);
 
-  if (!session) return <Login onLogin={completeLogin} />;
+  if (showLanding) {
+    return (
+      <IndexPage
+        campusConfig={campusConfig}
+        user={session?.user ?? null}
+        onNavigateToLogin={(initialTab = 'signin') => {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('campusconnect_visited', 'true');
+          }
+          setLoginTab(initialTab);
+          setShowLanding(false);
+        }}
+        onEnterOverview={() => {
+          setShowLanding(false);
+          setView('home');
+        }}
+      />
+    );
+  }
+
+  if (!session) {
+    return (
+      <Login
+        initialTab={loginTab}
+        onLogin={completeLogin}
+        onShowLanding={() => setShowLanding(true)}
+      />
+    );
+  }
   if (loading) {
     return (
       <div className="app-loading">
@@ -246,6 +295,12 @@ export default function App() {
               onClick={() => setView('presentation')}
             />
           )}
+          <NavButton
+            icon="auto_awesome"
+            label="Product Showcase"
+            active={false}
+            onClick={() => setShowLanding(true)}
+          />
         </nav>
         <div className="sidebar-bottom">
           <div className="local-badge">
@@ -809,8 +864,22 @@ function AdminCampusModal({
   );
 }
 
-function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: boolean) => void }) {
-  const [gatewayTab, setGatewayTab] = useState<'signin' | 'signup'>('signin');
+function Login({
+  onLogin,
+  initialTab = 'signin',
+  onShowLanding,
+}: {
+  onLogin: (session: StoredSession, isNewUser?: boolean) => void;
+  initialTab?: 'signin' | 'signup';
+  onShowLanding?: () => void;
+}) {
+  const [gatewayTab, setGatewayTab] = useState<'signin' | 'signup'>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setGatewayTab(initialTab);
+    }
+  }, [initialTab]);
   const [authMode, setAuthMode] = useState<'password' | 'face'>('password');
   
   // Campus Code & QR setup
@@ -824,6 +893,7 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
   const [campusConfig, setCampusConfig] = useState<CampusConfig | null>(null);
 
   // Sign In state
+  const [signinRole, setSigninRole] = useState<Role>('student');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -847,10 +917,6 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
         if (res.config.code) {
           setCampusCode((prev) => prev || res.config.code);
         }
-        if (!res.config.isInitialized) {
-          setGatewayTab('signup');
-          setSignupRole('admin');
-        }
       })
       .catch(() => {});
 
@@ -864,7 +930,8 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
     setSubmitting(true);
     setError(null);
     try {
-      onLogin(await api.login(email, password, campusCode));
+      const codeToSend = signinRole === 'admin' ? undefined : campusCode;
+      onLogin(await api.login(email, password, codeToSend));
     } catch (reason) {
       setError(errorText(reason));
     } finally {
@@ -885,13 +952,14 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
     setSubmitting(true);
     setError(null);
     try {
+      const codeToSend = signupRole === 'admin' ? undefined : campusCode;
       const session = await api.signup({
         name: signupName,
         email: signupEmail,
         password: signupPassword,
         role: signupRole,
         faceData: signupFaceData,
-        campusCode,
+        campusCode: codeToSend,
       });
       onLogin(session, true);
     } catch (reason) {
@@ -908,6 +976,17 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
   return (
     <main className="login-page">
       <section className="login-intro">
+        {onShowLanding && (
+          <button
+            type="button"
+            className="landing-back-pill"
+            onClick={onShowLanding}
+            aria-label="Back to Product Showcase and Landing Page"
+          >
+            <Symbol name="arrow_back" />
+            <span>Product Showcase & Overview</span>
+          </button>
+        )}
         <div className="brand">
           <div className="brand-mark">
             <Symbol name="domain" filled />
@@ -968,23 +1047,44 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
               <p>Choose your target portal gateway or enter credentials.</p>
             </div>
 
-            {/* Role Portal Overview */}
-            <div className="portal-gateway-selector">
-              <div className="portal-card-btn active">
-                <Symbol name="school" filled />
+            {/* Role Portal Selector */}
+            <div className="portal-gateway-selector" role="radiogroup" aria-label="Target Portal Gateway">
+              <button
+                type="button"
+                className={`portal-card-btn ${signinRole === 'student' ? 'active' : ''}`}
+                onClick={() => {
+                  setSigninRole('student');
+                  setError(null);
+                }}
+              >
+                <Symbol name="school" filled={signinRole === 'student'} />
                 <span className="portal-title">Student Portal</span>
                 <span className="portal-desc">Reports & Radar</span>
-              </div>
-              <div className="portal-card-btn">
-                <Symbol name="engineering" filled />
+              </button>
+              <button
+                type="button"
+                className={`portal-card-btn ${signinRole === 'staff' ? 'active' : ''}`}
+                onClick={() => {
+                  setSigninRole('staff');
+                  setError(null);
+                }}
+              >
+                <Symbol name="engineering" filled={signinRole === 'staff'} />
                 <span className="portal-title">Facilities Staff</span>
                 <span className="portal-desc">3D Twin & Triage</span>
-              </div>
-              <div className="portal-card-btn">
-                <Symbol name="admin_panel_settings" filled />
+              </button>
+              <button
+                type="button"
+                className={`portal-card-btn ${signinRole === 'admin' ? 'active' : ''}`}
+                onClick={() => {
+                  setSigninRole('admin');
+                  setError(null);
+                }}
+              >
+                <Symbol name="admin_panel_settings" filled={signinRole === 'admin'} />
                 <span className="portal-title">Admin Gateway</span>
                 <span className="portal-desc">Campus Architecture & QR</span>
-              </div>
+              </button>
             </div>
 
             <div className="auth-tab-row">
@@ -1004,26 +1104,28 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
               </button>
             </div>
 
-            {/* Campus Code Input */}
-            <label>
-              Campus Institutional Access Code
-              <div className="campus-code-input-wrap">
-                <Symbol name="domain_verification" />
-                <input
-                  name="campusCode"
-                  type="text"
-                  value={campusCode}
-                  onChange={(event) => setCampusCode(event.target.value.toUpperCase())}
-                  placeholder={campusConfig?.code || 'e.g. CAMPUS-2026'}
-                  required
-                />
-                {campusConfig?.isInitialized && campusCode.trim().toUpperCase() === campusConfig.code.toUpperCase() ? (
-                  <span className="code-valid-pill"><Symbol name="check" /> Valid</span>
-                ) : (
-                  <span className="code-hint-pill">Scan QR / Required</span>
-                )}
-              </div>
-            </label>
+            {/* Campus Code Input - Only required for Student and Staff, NOT asked for Admin */}
+            {signinRole !== 'admin' && (
+              <label>
+                Campus Institutional Access Code
+                <div className="campus-code-input-wrap">
+                  <Symbol name="domain_verification" />
+                  <input
+                    name="campusCode"
+                    type="text"
+                    value={campusCode}
+                    onChange={(event) => setCampusCode(event.target.value.toUpperCase())}
+                    placeholder={campusConfig?.code || 'CAMPUS-2026'}
+                    required
+                  />
+                  {campusCode.trim().toUpperCase() === (campusConfig?.code || 'CAMPUS-2026').toUpperCase() ? (
+                    <span className="code-valid-pill"><Symbol name="check" /> Valid</span>
+                  ) : (
+                    <span className="code-hint-pill">Scan QR / Required</span>
+                  )}
+                </div>
+              </label>
+            )}
 
             <label>
               Email Address
@@ -1092,16 +1194,8 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
               <p>Enroll as a new student, facilities staff, or university administrator.</p>
             </div>
 
-            {/* Campus Initialization or Code Requirement */}
-            {campusConfig && !campusConfig.isInitialized ? (
-              <div className="campus-init-banner">
-                <Symbol name="admin_panel_settings" filled />
-                <div>
-                  <strong>Institutional Setup Required</strong>
-                  <p>Register as the founding Campus Administrator to generate the master Campus Code & QR Gateway for your institution.</p>
-                </div>
-              </div>
-            ) : (
+            {/* Campus Code Requirement - Only asked for Student and Staff, NOT asked for Admin */}
+            {signupRole !== 'admin' && (
               <label>
                 Campus Institutional Access Code
                 <div className="campus-code-input-wrap">
@@ -1111,10 +1205,10 @@ function Login({ onLogin }: { onLogin: (session: StoredSession, isNewUser?: bool
                     type="text"
                     value={campusCode}
                     onChange={(event) => setCampusCode(event.target.value.toUpperCase())}
-                    placeholder={campusConfig?.code || 'e.g. CAMPUS-2026'}
+                    placeholder={campusConfig?.code || 'CAMPUS-2026'}
                     required
                   />
-                  {campusConfig?.isInitialized && campusCode.trim().toUpperCase() === campusConfig.code.toUpperCase() && (
+                  {campusCode.trim().toUpperCase() === (campusConfig?.code || 'CAMPUS-2026').toUpperCase() && (
                     <span className="code-valid-pill"><Symbol name="check" /> Valid</span>
                   )}
                 </div>

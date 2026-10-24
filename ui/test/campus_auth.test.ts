@@ -184,3 +184,15 @@ test('11. Problem Analytics & Operations Intelligence data contracts', () => {
   assert.ok(Array.isArray(adminAnalytics.adminInsights?.departmentWorkload), 'departmentWorkload must be an array');
   assert.ok(Array.isArray(adminAnalytics.adminInsights?.recurringIssueHotspots), 'recurringIssueHotspots must be an array');
 });
+
+test('12. Role-dependent Campus Code requirement: Admin bypass vs Student/Staff enforcement', () => {
+  // Admin credentials authenticate successfully without campus code
+  const adminAuth = authenticateLocal('admin@campusconnect.local', 'admin-secure-pwd');
+  assert.ok(adminAuth, 'Admin must authenticate successfully with email and password');
+  assert.equal(adminAuth?.role, 'admin');
+
+  // Student credentials verify campus code enforcement
+  assert.throws(() => verifyCampusCode(''), /Invalid or missing Campus Code/);
+  assert.throws(() => verifyCampusCode('WRONG-CODE'), /Invalid or missing Campus Code/);
+  assert.equal(verifyCampusCode('CAMPUS-2026'), true, 'Student with valid code passes');
+});

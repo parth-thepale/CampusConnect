@@ -343,18 +343,6 @@ export function authenticateFace(identifier: string, faceData?: string): Session
 }
 
 export function getCampusConfig(): CampusConfig {
-  const admin = db.prepare('SELECT email FROM users WHERE role = ? AND active = 1 LIMIT 1').get('admin') as { email: string } | undefined;
-  if (!admin) {
-    return {
-      code: '',
-      name: 'CampusConnect University',
-      qrPayload: '',
-      adminEmail: '',
-      createdAt: '',
-      isInitialized: false,
-    };
-  }
-
   type CfgRow = { id: string; code: string; name: string; admin_email: string; qr_payload: string; created_at: string };
   const row = db.prepare('SELECT * FROM campus_config WHERE id = ?').get('main') as CfgRow | undefined;
   if (row) {
@@ -368,20 +356,32 @@ export function getCampusConfig(): CampusConfig {
     };
   }
 
+  const admin = db.prepare('SELECT email FROM users WHERE role = ? AND active = 1 LIMIT 1').get('admin') as { email: string } | undefined;
   const defaultCode = 'CAMPUS-2026';
   const defaultName = 'CampusConnect Central University';
   const defaultQr = `https://campusconnect-ff8f1.web.app?campus=${defaultCode}`;
-  const createdAt = now();
-  db.prepare('INSERT OR REPLACE INTO campus_config (id, code, name, admin_email, qr_payload, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run('main', defaultCode, defaultName, admin.email, defaultQr, createdAt);
+
+  if (admin) {
+    const createdAt = now();
+    db.prepare('INSERT OR REPLACE INTO campus_config (id, code, name, admin_email, qr_payload, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run('main', defaultCode, defaultName, admin.email, defaultQr, createdAt);
+    return {
+      code: defaultCode,
+      name: defaultName,
+      qrPayload: defaultQr,
+      adminEmail: admin.email,
+      createdAt,
+      isInitialized: true,
+    };
+  }
 
   return {
     code: defaultCode,
     name: defaultName,
     qrPayload: defaultQr,
-    adminEmail: admin.email,
-    createdAt,
-    isInitialized: true,
+    adminEmail: '',
+    createdAt: '',
+    isInitialized: false,
   };
 }
 
@@ -408,12 +408,10 @@ export function saveCampusConfig(code?: string, name?: string, adminEmail?: stri
 
 export function verifyCampusCode(code?: string) {
   const cfg = getCampusConfig();
-  if (!cfg.isInitialized) {
-    throw new Error('Campus gateway not yet initialized. Please register the founding University Administrator account.');
-  }
+  const expected = (cfg.code || 'CAMPUS-2026').toUpperCase();
   const cleaned = (code ?? '').trim().toUpperCase();
-  if (!cleaned || cleaned !== cfg.code.toUpperCase()) {
-    throw new Error(`Invalid or missing Campus Code. Please enter valid institutional code (e.g. ${cfg.code}) or scan campus QR pass.`);
+  if (!cleaned || cleaned !== expected) {
+    throw new Error(`Invalid or missing Campus Code. Please enter valid institutional code (e.g. ${expected}) or scan campus QR pass.`);
   }
   return true;
 }
